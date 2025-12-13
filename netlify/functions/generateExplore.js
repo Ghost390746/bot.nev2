@@ -50,10 +50,10 @@ async function generateExploreHTML() {
     <h1>Explore Bots</h1>
     ${botHTML || '<p>No bots found yet.</p>'}
 
-    <script src="/netlify/functions/espeakng-min.js"></script>
+    <script src="/espeakng-min.js"></script>
     <script>
       // Initialize eSpeakNG
-      const tts = new eSpeakNG('/netlify/functions/espeakng-worker.js');
+      const tts = new eSpeakNG('/espeakng-worker.js');
 
       function sendMessage(index) {
         const botDiv = document.getElementById('bot-' + index);
@@ -92,3 +92,4 @@ export async function handler(event, context) {
     return { statusCode: 500, headers:{ "Content-Type":"text/plain"}, body: "Error generating explore page." };
   }
 }
+
