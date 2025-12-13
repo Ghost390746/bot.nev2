@@ -17,13 +17,13 @@ button { padding: 5px 10px; margin-right:5px; }
 <div id="bots-container">Loading bots...</div>
 
 <!-- Load eSpeakNG -->
-<script src="/netlify/functions/espeakng-min.js"></script>
+<script src="/espeakng-min.js"></script>
 
 <script>
 let tts;
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof eSpeakNG !== 'undefined') {
-    tts = new eSpeakNG('/netlify/functions/espeakng-worker.js', () => {
+    tts = new eSpeakNG('/espeakng-worker.js', () => {
       console.log('TTS ready');
     });
   }
