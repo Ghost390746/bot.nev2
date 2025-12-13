@@ -19,9 +19,9 @@
     .output { margin-top: 20px; font-family: monospace; padding: 15px; border-radius: 6px; }
     .output.success { background: #e6ffed; color: #256d1b; border: 1px solid #8dd48a; }
     .output.error { background: #ffe6e6; color: #a12626; border: 1px solid #f5a3a3; }
-    .nav-links { margin-top: 20px; }
-    .nav-links a { margin: 0 10px; text-decoration: none; color: #007bff; }
-    .nav-links a:hover { text-decoration: underline; }
+    .links-container { margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+    .links-container a { background: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; color: #007bff; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
+    .links-container a:hover { background: #007bff; color: white; }
   </style>
 </head>
 <body>
@@ -48,8 +48,12 @@
 
   <div id="output" class="output"></div>
 
-  <div class="nav-links">
+  <!-- Links to other pages -->
+  <div class="links-container">
+    <a href="/create.html">⚙️ Create a Bot</a>
+    <a href="/marketplace.html">🛒 Marketplace</a>
     <a href="/explore.html">🔍 Explore Bots</a>
+    <a href="/index.html">🏠 Home</a>
   </div>
 
   <!-- espeakng.js loader -->
@@ -70,7 +74,7 @@
       ? '/netlify/functions/get-voices'
       : '/.netlify/functions/get-voices';
 
-    // --------------------- Load Voices from Netlify ---------------------
+    // Load Voices
     async function loadVoices() {
       try {
         const res = await fetch(voicesPath);
@@ -87,10 +91,9 @@
         voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
       }
     }
-
     loadVoices();
 
-    // --------------------- Placeholder FBX list ---------------------
+    // Placeholder FBX Models
     const fbxModels = [
       {id: 'model1', name: 'Humanoid Default'},
       {id: 'model2', name: 'Robot Model'}
@@ -102,7 +105,7 @@
       fbxSelect.appendChild(opt);
     });
 
-    // --------------------- Submit Bot ---------------------
+    // Submit Bot
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('botName').value.trim();
@@ -140,7 +143,7 @@
           API Key: ${data.apiKey || 'Check Supabase'}<br>
           File: bot.js<br><br>
           <a href="/explore.html">🔍 View Explore Page</a> |
-          <a href="/index.html">⚙️ Create Another</a>
+          <a href="/index.html">🏠 Home</a>
         `;
         output.className = 'output success';
         form.reset();
