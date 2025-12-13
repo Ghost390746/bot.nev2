@@ -11,65 +11,17 @@
       padding: 40px;
       text-align: center;
     }
-    h1 {
-      color: #333;
-    }
-    form {
-      margin: 20px auto;
-      max-width: 500px;
-      background: #fff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-      margin-bottom: 15px;
-      padding: 10px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      resize: none;
-    }
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-    .output {
-      margin-top: 20px;
-      font-family: monospace;
-      padding: 15px;
-      border-radius: 6px;
-    }
-    .output.success {
-      background: #e6ffed;
-      color: #256d1b;
-      border: 1px solid #8dd48a;
-    }
-    .output.error {
-      background: #ffe6e6;
-      color: #a12626;
-      border: 1px solid #f5a3a3;
-    }
-    .nav-links {
-      margin-top: 20px;
-    }
-    .nav-links a {
-      margin: 0 10px;
-      text-decoration: none;
-      color: #007bff;
-    }
-    .nav-links a:hover {
-      text-decoration: underline;
-    }
+    h1 { color: #333; }
+    form { margin: 20px auto; max-width: 500px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);}
+    textarea, select, input { width: 100%; margin-bottom: 15px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px; }
+    button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .output { margin-top: 20px; font-family: monospace; padding: 15px; border-radius: 6px; }
+    .output.success { background: #e6ffed; color: #256d1b; border: 1px solid #8dd48a; }
+    .output.error { background: #ffe6e6; color: #a12626; border: 1px solid #f5a3a3; }
+    .nav-links { margin-top: 20px; }
+    .nav-links a { margin: 0 10px; text-decoration: none; color: #007bff; }
+    .nav-links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -77,8 +29,22 @@
   <h1>🤖 Create Your Custom Bot</h1>
 
   <form id="botForm">
-    <textarea id="description" placeholder="Describe your bot..."></textarea>
-    <br>
+    <input type="text" id="botName" placeholder="Bot Name" required />
+    <textarea id="description" placeholder="Describe your bot..." required></textarea>
+
+    <label for="voiceSelect">Select Voice:</label>
+    <select id="voiceSelect" required>
+      <option value="">Loading voices...</option>
+    </select>
+
+    <label for="fbxSelect">Select FBX Model:</label>
+    <select id="fbxSelect" required>
+      <option value="">Choose FBX Model</option>
+      <!-- Dynamically filled -->
+    </select>
+
+    <input type="text" id="gumroadLink" placeholder="Optional Gumroad Link for paid model" />
+
     <button type="submit">Create Bot</button>
   </form>
 
@@ -88,24 +54,60 @@
     <a href="/explore.html">🔍 Explore Bots</a>
   </div>
 
+  <!-- espeakng.js loader -->
+  <script src="/netlify/functions/espeakng.min.js"></script>
+
   <script>
     const form = document.getElementById('botForm');
     const output = document.getElementById('output');
+    const voiceSelect = document.getElementById('voiceSelect');
+    const fbxSelect = document.getElementById('fbxSelect');
 
+    // Netlify function paths
     const createBotPath = window.location.hostname.includes('localhost')
       ? '/netlify/functions/overpoweredbot'
       : '/.netlify/functions/overpoweredbot';
 
-    const generateExplorePath = window.location.hostname.includes('localhost')
-      ? '/netlify/functions/generateExplore'
-      : '/.netlify/functions/generateExplore';
+    // --------------------- Load ESpeakNG voices ---------------------
+    const espeakngWorkerPath = window.location.hostname.includes('localhost')
+      ? '/netlify/functions/espeakng.worker.js'
+      : '/.netlify/functions/espeakng.worker.js';
 
+    const tts = new eSpeakNG(espeakngWorkerPath, () => {
+      const voices = tts.listVoices();
+      voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+      voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name + ' (' + v.lang + ')';
+        voiceSelect.appendChild(opt);
+      });
+    });
+
+    // --------------------- Placeholder FBX list ---------------------
+    const fbxModels = [
+      {id: 'model1', name: 'Humanoid Default'},
+      {id: 'model2', name: 'Robot Model'}
+      // Add more from database in future
+    ];
+    fbxModels.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      fbxSelect.appendChild(opt);
+    });
+
+    // --------------------- Submit Bot ---------------------
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const name = document.getElementById('botName').value.trim();
       const description = document.getElementById('description').value.trim();
+      const voice_id = voiceSelect.value;
+      const fbx_model_id = fbxSelect.value;
+      const gumroadLink = document.getElementById('gumroadLink').value.trim();
 
-      if (!description) {
-        output.textContent = 'Please enter a description.';
+      if (!name || !description || !voice_id || !fbx_model_id) {
+        output.textContent = 'Please fill all required fields.';
         output.className = 'output error';
         return;
       }
@@ -117,11 +119,10 @@
         const res = await fetch(createBotPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description })
+          body: JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link: gumroadLink })
         });
 
         const data = await res.json();
-
         if (!res.ok || data.error) {
           output.textContent = `Error creating bot: ${data.error || 'Unknown error'}`;
           output.className = 'output error';
