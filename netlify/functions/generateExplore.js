@@ -11,7 +11,7 @@ async function generateExploreHTML() {
   let botHTML = '';
   bots.forEach((bot, index) => {
     const safeDesc = bot.description.replace(/"/g, '&quot;');
-    const voice = bot.voice_id || 'en-us';
+    const voice = bot.voice_id || 'en_us_general';
     const fbx = bot.fbx_model_id || 'N/A';
     const paidLink = bot.paid_link
       ? `<a href="${bot.paid_link}" target="_blank" style="background:#28a745;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;">Buy on Gumroad</a>`
@@ -50,32 +50,67 @@ async function generateExploreHTML() {
     <h1>Explore Bots</h1>
     ${botHTML || '<p>No bots found yet.</p>'}
 
-    <script src="/espeakng-min.js"></script>
-    <script>
+    <script type="module">
+      import { voices } from '/voices.js';
+
+      let tts;
+      let availableVoices = [];
+
       // Initialize eSpeakNG
-      const tts = new eSpeakNG('/espeakng-worker.js');
+      document.addEventListener('DOMContentLoaded', async () => {
+        if (typeof eSpeakNG !== 'undefined') {
+          tts = new eSpeakNG('/espeakng-worker.js', () => console.log('eSpeakNG ready'));
+        }
+
+        availableVoices = window.speechSynthesis.getVoices();
+        if (!availableVoices.length) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            availableVoices = window.speechSynthesis.getVoices();
+          };
+        }
+      });
+
+      function mapVoice(botVoiceId) {
+        const voiceData = voices.find(v => v.id === botVoiceId);
+        if (!voiceData) return null;
+        return availableVoices.find(v => v.lang === voiceData.lang && v.name.includes(voiceData.name)) || null;
+      }
+
+      async function speak(text, botVoiceId) {
+        const browserVoice = mapVoice(botVoiceId);
+        if (browserVoice) {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.voice = browserVoice;
+          window.speechSynthesis.speak(utter);
+          return;
+        }
+        if (tts) {
+          try {
+            await tts.speak(text, { voice: botVoiceId });
+          } catch(err) {
+            console.error('eSpeakNG TTS error:', err);
+          }
+        } else {
+          console.warn('No TTS available for voice:', botVoiceId);
+        }
+      }
 
       function sendMessage(index) {
-        const botDiv = document.getElementById('bot-' + index);
-        const input = document.getElementById('input-' + index);
-        const chat = document.getElementById('chat-' + index);
+        const botDiv = document.getElementById(\`bot-\${index}\`);
+        const input = document.getElementById(\`input-\${index}\`);
+        const chat = document.getElementById(\`chat-\${index}\`);
         const msg = input.value.trim();
-        if(!msg) return;
+        if (!msg) return;
 
-        const description = botDiv.getAttribute('data-description');
-        const voice = botDiv.getAttribute('data-voice') || 'en-us';
-        const reply = "You said: '" + msg + "'. " + description;
+        const description = botDiv.dataset.description;
+        const botVoiceId = botDiv.dataset.voice;
+        const reply = \`You said: '\${msg}'. \${description}\`;
 
-        // Add messages to chat
-        chat.innerHTML += "<div><strong>You:</strong> " + msg + "</div>";
-        chat.innerHTML += "<div><strong>Bot:</strong> " + reply + "</div>";
+        chat.innerHTML += \`<div><strong>You:</strong> \${msg}</div>\`;
+        chat.innerHTML += \`<div><strong>Bot:</strong> \${reply}</div>\`;
 
-        // Speak the bot's reply
-        tts.speak(reply, { voice: voice }).then(() => {
-          console.log('Spoken:', reply);
-        }).catch(err => console.error('TTS error:', err));
-
-        input.value = "";
+        speak(reply, botVoiceId);
+        input.value = '';
       }
     </script>
   </body>
@@ -92,4 +127,3 @@ export async function handler(event, context) {
     return { statusCode: 500, headers:{ "Content-Type":"text/plain"}, body: "Error generating explore page." };
   }
 }
-
