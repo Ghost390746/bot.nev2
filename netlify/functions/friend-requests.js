@@ -9,13 +9,10 @@ export const handler = async (event) => {
   }
 
   try {
-    const { action, sender_email, receiver_email } = JSON.parse(event.body);
-
-    if (!action || !sender_email || !receiver_email) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Missing required fields.' }) };
-    }
+    const { action, sender_email, receiver_email, request_id, status } = JSON.parse(event.body);
 
     if (action === 'send') {
+      if (!sender_email || !receiver_email) return { statusCode: 400, body: JSON.stringify({ error: 'Missing emails.' }) };
       const { data, error } = await supabase
         .from('friend_requests')
         .insert({ id: uuidv4(), sender_email, receiver_email, status: 'pending' })
@@ -26,9 +23,7 @@ export const handler = async (event) => {
     }
 
     if (action === 'respond') {
-      const { status, request_id } = JSON.parse(event.body);
-      if (!status || !request_id) return { statusCode: 400, body: JSON.stringify({ error: 'Missing status or request_id.' }) };
-
+      if (!request_id || !status) return { statusCode: 400, body: JSON.stringify({ error: 'Missing request_id or status.' }) };
       const { data, error } = await supabase
         .from('friend_requests')
         .update({ status })
@@ -36,8 +31,29 @@ export const handler = async (event) => {
         .select()
         .single();
       if (error) throw error;
-
       return { statusCode: 200, body: JSON.stringify({ success: true, request: data }) };
+    }
+
+    if (action === 'list-incoming') {
+      if (!receiver_email) return { statusCode: 400, body: JSON.stringify({ error: 'Missing receiver_email.' }) };
+      const { data, error } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .eq('receiver_email', receiver_email)
+        .eq('status', 'pending');
+      if (error) throw error;
+      return { statusCode: 200, body: JSON.stringify({ success: true, requests: data }) };
+    }
+
+    if (action === 'get-profile') {
+      if (!receiver_email) return { statusCode: 400, body: JSON.stringify({ error: 'Missing email.' }) };
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', receiver_email)
+        .single();
+      if (error) throw error;
+      return { statusCode: 200, body: JSON.stringify({ success: true, user: data }) };
     }
 
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid action.' }) };
