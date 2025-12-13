@@ -16,7 +16,19 @@ button { padding: 5px 10px; margin-right:5px; }
 <h1>Explore Bots</h1>
 <div id="bots-container">Loading bots...</div>
 
+<!-- Load eSpeakNG -->
+<script src="/netlify/functions/espeakng-min.js"></script>
+
 <script>
+let tts;
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof eSpeakNG !== 'undefined') {
+    tts = new eSpeakNG('/netlify/functions/espeakng-worker.js', () => {
+      console.log('TTS ready');
+    });
+  }
+});
+
 const functionPath = window.location.hostname.includes('localhost')
   ? '/netlify/functions/generateExplore'
   : '/.netlify/functions/generateExplore';
@@ -29,6 +41,38 @@ async function fetchBots() {
     if (!res.ok) throw new Error(`Server returned ${res.status}`);
     const html = await res.text();
     container.innerHTML = html;
+
+    // Add sendMessage to all bots
+    const botDivs = container.querySelectorAll('.bot');
+    botDivs.forEach((botDiv, index) => {
+      const sendBtn = botDiv.querySelector('button');
+      const input = botDiv.querySelector('input');
+      const chat = botDiv.querySelector(`#chat-${index}`);
+
+      sendBtn.addEventListener('click', () => {
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        const description = botDiv.dataset.description || '';
+        const voice = botDiv.dataset.voice || 'en_us';
+        const reply = "You said: '" + msg + "'. " + description;
+
+        chat.innerHTML += "<div><strong>You:</strong> " + msg + "</div>";
+        chat.innerHTML += "<div><strong>Bot:</strong> " + reply + "</div>";
+
+        // Speak reply
+        if (tts) {
+          tts.speak(reply, { voice }).catch(err => console.error("TTS error:", err));
+        } else if (window.speechSynthesis) {
+          const utter = new SpeechSynthesisUtterance(reply);
+          utter.lang = voice.replace('_','-'); // en_us -> en-US
+          window.speechSynthesis.speak(utter);
+        }
+
+        input.value = '';
+      });
+    });
+
   } catch (err) {
     console.error(err);
     container.innerHTML = `<p style="color:red;">Failed to load bots: ${err.message}</p>`;
@@ -39,4 +83,3 @@ window.addEventListener('DOMContentLoaded', fetchBots);
 </script>
 </body>
 </html>
-
