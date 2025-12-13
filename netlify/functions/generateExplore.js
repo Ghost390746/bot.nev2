@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { voices } from './voices.js'; // import server-side for inlining
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
@@ -32,6 +33,9 @@ async function generateExploreHTML() {
     `;
   });
 
+  // Inline voices for browser
+  const voicesJSON = JSON.stringify(voices);
+
   return `
   <!DOCTYPE html>
   <html lang="en">
@@ -51,12 +55,11 @@ async function generateExploreHTML() {
     ${botHTML || '<p>No bots found yet.</p>'}
 
     <script type="module">
-      import { voices } from '/voices.js';
+      const voices = ${voicesJSON};
 
       let tts;
       let availableVoices = [];
 
-      // Initialize eSpeakNG
       document.addEventListener('DOMContentLoaded', async () => {
         if (typeof eSpeakNG !== 'undefined') {
           tts = new eSpeakNG('/espeakng-worker.js', () => console.log('eSpeakNG ready'));
