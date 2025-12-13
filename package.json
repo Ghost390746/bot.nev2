@@ -1,19 +1,25 @@
 {
   "name": "overpowered-bot",
   "version": "1.0.0",
-  "description": "Server moderation bot with custom bot creation and explore page",
+  "description": "Server moderation bot with custom bot creation, explore page, and user system",
   "type": "module",
   "main": "api/overpoweredbot.js",
   "scripts": {
     "dev": "vercel dev",
     "start": "node api/overpoweredbot.js",
-    "explore": "node api/generateExplore.js"
+    "explore": "node api/generateExplore.js",
+    "signup": "node api/signup.js",
+    "login": "node api/login.js",
+    "profile": "node api/profileCreation.js"
   },
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.4",
+    "bcrypt": "^5.1.1",
+    "uuid": "^9.0.1"
   },
   "engines": {
     "node": ">=18"
