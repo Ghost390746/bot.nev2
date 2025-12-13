@@ -28,11 +28,11 @@
 <div class="bot-grid" id="botGrid">Loading bots...</div>
 
 <h2 style="text-align:center;">Add a New Bot</h2>
-<form id="createBotForm">
+<form id="createBotForm" enctype="multipart/form-data">
   <input type="text" id="name" placeholder="Bot Name" required>
   <textarea id="description" placeholder="Bot Description" required></textarea>
-  <input type="text" id="profile_picture" placeholder="Profile Picture URL">
-  <input type="text" id="fbx_model_id" placeholder="FBX Model ID" required>
+  <input type="file" id="profile_picture_file" accept="image/*">
+  <input type="file" id="fbx_file" accept=".fbx" required>
   <input type="text" id="paid_link" placeholder="Optional Gumroad Link">
   <input type="number" id="price_points" placeholder="Price in Points">
   <input type="email" id="seller_email" placeholder="Your Email" required>
@@ -53,6 +53,7 @@ const createBotPath = window.location.hostname.includes('localhost')
   ? '/netlify/functions/createMarketplaceBot'
   : '/.netlify/functions/createMarketplaceBot';
 
+// Load bots and display price + seller info
 async function loadBots() {
   try {
     const res = await fetch(getBotsPath);
@@ -81,29 +82,38 @@ async function loadBots() {
   }
 }
 
-loadBots();
-
+// Handle bot creation
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   output.textContent = 'Creating bot...';
   output.className = 'output';
 
-  const botData = {
-    name: document.getElementById('name').value.trim(),
-    description: document.getElementById('description').value.trim(),
-    profile_picture: document.getElementById('profile_picture').value.trim(),
-    fbx_model_id: document.getElementById('fbx_model_id').value.trim(),
-    paid_link: document.getElementById('paid_link').value.trim(),
-    price_points: parseInt(document.getElementById('price_points').value) || 0,
-    seller_email: document.getElementById('seller_email').value.trim()
-  };
+  const name = document.getElementById('name').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const seller_email = document.getElementById('seller_email').value.trim();
+  const price_points = parseInt(document.getElementById('price_points').value) || 0;
+  const paid_link = document.getElementById('paid_link').value.trim();
+
+  const profile_picture_file = document.getElementById('profile_picture_file').files[0];
+  const fbx_file = document.getElementById('fbx_file').files[0];
+
+  if (!name || !description || !seller_email || !fbx_file) {
+    output.textContent = 'Please fill all required fields and upload the FBX.';
+    output.className = 'output error';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('description', description);
+  formData.append('seller_email', seller_email);
+  formData.append('price_points', price_points);
+  formData.append('paid_link', paid_link);
+  if (profile_picture_file) formData.append('profile_picture_file', profile_picture_file);
+  formData.append('fbx_file', fbx_file);
 
   try {
-    const res = await fetch(createBotPath, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(botData)
-    });
+    const res = await fetch(createBotPath, { method: 'POST', body: formData });
     const data = await res.json();
     if (!res.ok || data.error) {
       output.textContent = data.error || 'Failed to create bot';
@@ -120,7 +130,8 @@ form.addEventListener('submit', async (e) => {
     output.className = 'output error';
   }
 });
-</script>
 
+loadBots();
+</script>
 </body>
 </html>
