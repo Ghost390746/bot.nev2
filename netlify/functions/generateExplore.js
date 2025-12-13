@@ -11,12 +11,14 @@ async function generateExploreHTML() {
   let botHTML = '';
   bots.forEach((bot, index) => {
     const safeDesc = bot.description.replace(/"/g, '&quot;');
-    const voice = bot.voice_id || 'Unknown';
+    const voice = bot.voice_id || 'en-us';
     const fbx = bot.fbx_model_id || 'N/A';
-    const paidLink = bot.paid_link ? `<a href="${bot.paid_link}" target="_blank" style="background:#28a745;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;">Buy on Gumroad</a>` : '';
+    const paidLink = bot.paid_link
+      ? `<a href="${bot.paid_link}" target="_blank" style="background:#28a745;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;">Buy on Gumroad</a>`
+      : '';
 
     botHTML += `
-      <div class="bot" data-description="${safeDesc}" id="bot-${index}">
+      <div class="bot" data-description="${safeDesc}" data-voice="${voice}" id="bot-${index}">
         <h2>${bot.name}</h2>
         <p>${bot.description}</p>
         <p><strong>Voice:</strong> ${voice} | <strong>FBX:</strong> ${fbx}</p>
@@ -48,17 +50,31 @@ async function generateExploreHTML() {
     <h1>Explore Bots</h1>
     ${botHTML || '<p>No bots found yet.</p>'}
 
+    <script src="/netlify/functions/espeakng-min.js"></script>
     <script>
+      // Initialize eSpeakNG
+      const tts = new eSpeakNG('/netlify/functions/espeakng-worker.js');
+
       function sendMessage(index) {
         const botDiv = document.getElementById('bot-' + index);
         const input = document.getElementById('input-' + index);
         const chat = document.getElementById('chat-' + index);
         const msg = input.value.trim();
         if(!msg) return;
+
         const description = botDiv.getAttribute('data-description');
+        const voice = botDiv.getAttribute('data-voice') || 'en-us';
         const reply = "You said: '" + msg + "'. " + description;
+
+        // Add messages to chat
         chat.innerHTML += "<div><strong>You:</strong> " + msg + "</div>";
         chat.innerHTML += "<div><strong>Bot:</strong> " + reply + "</div>";
+
+        // Speak the bot's reply
+        tts.speak(reply, { voice: voice }).then(() => {
+          console.log('Spoken:', reply);
+        }).catch(err => console.error('TTS error:', err));
+
         input.value = "";
       }
     </script>
