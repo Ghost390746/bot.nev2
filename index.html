@@ -40,11 +40,9 @@
     <label for="fbxSelect">Select FBX Model:</label>
     <select id="fbxSelect" required>
       <option value="">Choose FBX Model</option>
-      <!-- Dynamically filled -->
     </select>
 
     <input type="text" id="gumroadLink" placeholder="Optional Gumroad Link for paid model" />
-
     <button type="submit">Create Bot</button>
   </form>
 
@@ -68,27 +66,34 @@
       ? '/netlify/functions/overpoweredbot'
       : '/.netlify/functions/overpoweredbot';
 
-    // --------------------- Load ESpeakNG voices ---------------------
-    const espeakngWorkerPath = window.location.hostname.includes('localhost')
-      ? '/netlify/functions/espeakng-worker.js'
-      : '/.netlify/functions/espeakng-worker.js';
+    const voicesPath = window.location.hostname.includes('localhost')
+      ? '/netlify/functions/get-voices'
+      : '/.netlify/functions/get-voices';
 
-    const tts = new eSpeakNG(espeakngWorkerPath, () => {
-      const voices = tts.listVoices();
-      voiceSelect.innerHTML = '<option value="">Select Voice</option>';
-      voices.forEach(v => {
-        const opt = document.createElement('option');
-        opt.value = v.id;
-        opt.textContent = v.name + ' (' + v.lang + ')';
-        voiceSelect.appendChild(opt);
-      });
-    });
+    // --------------------- Load Voices from Netlify ---------------------
+    async function loadVoices() {
+      try {
+        const res = await fetch(voicesPath);
+        const voices = await res.json();
+        voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+        voices.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.id;
+          opt.textContent = `${v.name} (${v.lang})`;
+          voiceSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("Failed to load voices:", err);
+        voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
+      }
+    }
+
+    loadVoices();
 
     // --------------------- Placeholder FBX list ---------------------
     const fbxModels = [
       {id: 'model1', name: 'Humanoid Default'},
       {id: 'model2', name: 'Robot Model'}
-      // Add more from database in future
     ];
     fbxModels.forEach(m => {
       const opt = document.createElement('option');
@@ -149,4 +154,5 @@
   </script>
 </body>
 </html>
+
 
