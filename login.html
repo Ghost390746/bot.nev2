@@ -6,15 +6,19 @@
 </head>
 <body>
   <h1>Login</h1>
+
   <input type="email" id="email" placeholder="Email" required /><br>
   <input type="password" id="password" placeholder="Password" required /><br>
+  <label>
+    <input type="checkbox" id="rememberMe" /> Remember Me
+  </label><br>
   <button id="loginBtn">Login</button>
   <div id="output"></div>
 
 <script>
 const output = document.getElementById('output');
 
-// Function to set a cookie
+// Optional: frontend cookie setter (can rely on backend Set-Cookie instead)
 function setCookie(name, value, days) {
   const expires = new Date(Date.now() + days*24*60*60*1000).toUTCString();
   document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax`;
@@ -23,22 +27,31 @@ function setCookie(name, value, days) {
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
+  const remember_me = document.getElementById('rememberMe').checked;
+
+  if (!email || !password) {
+    output.textContent = "Please enter both email and password.";
+    return;
+  }
 
   try {
     const res = await fetch('/.netlify/functions/login', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, remember_me })
     });
 
     const data = await res.json();
 
     if (data.success && data.session_token) {
-      // Store session_token in a cookie
-      setCookie('session_token', data.session_token, 1); // expires in 1 day
-      output.textContent = "Login successful!";
-     
-     window.location.href = '/profile.html?email=' + encodeURIComponent(email);
+      // Optional: set cookie on frontend (the backend already sets it)
+      setCookie('session_token', data.session_token, remember_me ? 90 : 1);
+
+      // Show success message briefly before redirect
+      output.textContent = data.message || "Login successful!";
+      setTimeout(() => {
+        window.location.href = '/profile.html?email=' + encodeURIComponent(email);
+      }, 500);
     } else {
       output.textContent = `Error: ${data.error || 'Unknown error'}`;
     }
