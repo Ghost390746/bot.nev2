@@ -37,8 +37,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
       // Store session_token in a cookie
       setCookie('session_token', data.session_token, 1); // expires in 1 day
       output.textContent = "Login successful!";
-      // Redirect to profile page (no need to pass email)
-      window.location.href = '/profile.html';
+     
+     window.location.href = '/profile.html?email=' + encodeURIComponent(email);
     } else {
       output.textContent = `Error: ${data.error || 'Unknown error'}`;
     }
