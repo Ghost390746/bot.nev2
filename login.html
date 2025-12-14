@@ -35,7 +35,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     // Store JWT in a cookie for profile page
     setCookie('jwt', data.token, 1); // expires in 1 day
     output.textContent = "Login successful!";
-    window.location.href = '/profile.html'; // profile page will use JWT
+   window.location.href = '/profile.html?email='+encodeURIComponent(email);
+
   } else {
     output.textContent = `Error: ${data.error}`;
   }
