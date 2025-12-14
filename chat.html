@@ -99,16 +99,17 @@ body {
   <div id="chatList">Loading…</div>
 
   <hr>
-  <button onclick="alert('Message reactions coming soon 👍')">👍 Reactions</button>
-  <button onclick="alert('File sharing coming soon 📁')">📁 Files</button>
-  <button onclick="alert('Bots in chat coming soon 🤖')">🤖 Bots</button>
-  <button onclick="alert('Mute & archive coming soon 🔕')">🔕 Mute</button>
+  <button onclick="openReactions()">👍 Reactions</button>
+  <button onclick="openFiles()">📁 Files</button>
+  <button onclick="openBots()">🤖 Bots</button>
+  <button onclick="toggleMute()">🔕 Mute/Archive</button>
+  <button onclick="kickUser()">🚫 Kick User</button>
+  <button onclick="renameChat()">✏️ Rename Chat</button>
 </div>
 
 <!-- CHAT AREA -->
 <div id="chatArea">
   <div id="chatHeader">Select a chat</div>
-
   <div id="messages"></div>
 
   <div id="inputBar">
@@ -247,8 +248,55 @@ function renderMessage(msg) {
 function getToken() {
   return document.cookie
     .split('; ')
-    .find(r => r.startsWith('session_token='))
-    ?.split('=')[1];
+    .find(r => r.startsWith('session_token='))?.split('=')[1];
+}
+
+/* -----------------------
+   EXTRA FEATURES
+----------------------- */
+function openReactions() {
+  alert('Feature: Reactions will open a reactions panel (needs backend)');
+}
+
+function openFiles() {
+  alert('Feature: File sharing panel (needs backend)');
+}
+
+function openBots() {
+  alert('Feature: Add bots panel (needs backend)');
+}
+
+async function toggleMute() {
+  if (!conversationId) return;
+  await fetch('/.netlify/functions/chat-mute', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId })
+  });
+  alert('Chat muted/unmuted (needs backend)');
+}
+
+async function kickUser() {
+  const userId = prompt("Enter User ID to kick:");
+  if (!userId || !conversationId) return;
+  await fetch('/.netlify/functions/chat-kick', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, target_user_id: userId })
+  });
+  alert('Kick request sent (needs backend)');
+}
+
+async function renameChat() {
+  const newTitle = prompt("Enter new chat name:");
+  if (!newTitle || !conversationId) return;
+  await fetch('/.netlify/functions/chat-rename', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, new_title: newTitle })
+  });
+  document.getElementById('chatHeader').textContent = newTitle;
+  alert('Rename request sent (needs backend)');
 }
 
 loadChats();
