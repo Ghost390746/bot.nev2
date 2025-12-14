@@ -1,50 +1,196 @@
-<h2>Chats</h2>
-<div id="chatList"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chat</title>
 
-<div id="chatBox" style="display:none;">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  display: flex;
+  height: 100vh;
+}
+
+#sidebar {
+  width: 250px;
+  background: #f4f4f4;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+#chatArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-item {
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #ddd;
+}
+
+.chat-item:hover {
+  background: #ddd;
+}
+
+#messages {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+#inputBar {
+  display: flex;
+  padding: 10px;
+  border-top: 1px solid #ccc;
+}
+
+#inputBar input {
+  flex: 1;
+  padding: 8px;
+}
+
+#inputBar button {
+  margin-left: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="sidebar">
+  <h3>Chats</h3>
+  <div id="chatList">Loading…</div>
+
+  <hr>
+  <button onclick="alert('Message reactions coming soon 👍')">👍 Reactions</button>
+  <button onclick="alert('File sharing coming soon 📁')">📁 Files</button>
+  <button onclick="alert('Bots in chat coming soon 🤖')">🤖 Bots</button>
+  <button onclick="alert('Mute & archive coming soon 🔕')">🔕 Mute</button>
+</div>
+
+<div id="chatArea">
   <div id="messages"></div>
-  <input id="msgInput" placeholder="Type message..." />
-  <button onclick="sendMsg()">Send</button>
+
+  <div id="inputBar">
+    <input id="msgInput" placeholder="Type a message…" />
+    <button onclick="sendMessage()">Send</button>
+  </div>
 </div>
 
 <script>
-let currentChat = null;
-const userId = window.USER_ID; // set from profile
+/* -----------------------
+   SUPABASE SETUP
+----------------------- */
+const supabase = supabaseJs.createClient(
+  'YOUR_SUPABASE_URL',
+  'YOUR_PUBLIC_ANON_KEY'
+);
 
+let conversationId = null;
+let channel = null;
+
+/* -----------------------
+   LOAD CHAT LIST
+----------------------- */
 async function loadChats() {
-  const res = await fetch(`/.netlify/functions/chat-list?user_id=${userId}`);
+  const res = await fetch('/.netlify/functions/chat-list?session_token=' + getToken());
   const chats = await res.json();
-  document.getElementById('chatList').innerHTML = chats.map(c =>
-    `<div onclick="openChat('${c.conversation_id}')">
-      ${c.conversations.title || 'Private Chat'}
-    </div>`
-  ).join('');
-}
 
-async function openChat(id) {
-  currentChat = id;
-  document.getElementById('chatBox').style.display = 'block';
-  loadMessages();
-}
+  const list = document.getElementById('chatList');
+  list.innerHTML = '';
 
-async function loadMessages() {
-  const res = await fetch(`/.netlify/functions/chat-messages?id=${currentChat}`);
-  const msgs = await res.json();
-  document.getElementById('messages').innerHTML = msgs.map(m =>
-    `<div><b>${m.sender_id}:</b> ${m.content}</div>`
-  ).join('');
-}
-
-async function sendMsg() {
-  const content = msgInput.value;
-  await fetch('/.netlify/functions/chat-send', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ conversation_id: currentChat, sender_id:userId, content })
+  chats.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'chat-item';
+    div.textContent = c.conversations.title || 'Private Chat';
+    div.onclick = () => openChat(c.conversation_id);
+    list.appendChild(div);
   });
-  msgInput.value='';
-  loadMessages();
+}
+
+/* -----------------------
+   OPEN CHAT
+----------------------- */
+async function openChat(id) {
+  conversationId = id;
+  document.getElementById('messages').innerHTML = '';
+  await loadMessages();
+  startRealtime();
+}
+
+/* -----------------------
+   LOAD MESSAGES
+----------------------- */
+async function loadMessages() {
+  const res = await fetch(`/.netlify/functions/chat-messages?id=${conversationId}`);
+  const msgs = await res.json();
+  msgs.forEach(renderMessage);
+}
+
+/* -----------------------
+   REALTIME (THIS ANSWERS YOUR QUESTION)
+----------------------- */
+function startRealtime() {
+  if (channel) supabase.removeChannel(channel);
+
+  channel = supabase
+    .channel('chat-' + conversationId)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages' },
+      payload => {
+        renderMessage(payload.new);
+      }
+    )
+    .subscribe();
+}
+
+/* -----------------------
+   SEND MESSAGE
+----------------------- */
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  if (!input.value) return;
+
+  await fetch('/.netlify/functions/chat-send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      session_token: getToken(),
+      conversation_id: conversationId,
+      content: input.value
+    })
+  });
+
+  input.value = '';
+}
+
+/* -----------------------
+   RENDER MESSAGE
+----------------------- */
+function renderMessage(msg) {
+  const div = document.createElement('div');
+  div.textContent = msg.content;
+  document.getElementById('messages').appendChild(div);
+}
+
+/* -----------------------
+   TOKEN HELPER
+----------------------- */
+function getToken() {
+  return document.cookie
+    .split('; ')
+    .find(r => r.startsWith('session_token='))
+    ?.split('=')[1];
 }
 
 loadChats();
 </script>
+
+</body>
+</html>
