@@ -127,16 +127,20 @@ async function loadChats() {
     const chats = await res.json();
     const list = document.getElementById('chatList');
     list.innerHTML = '';
-    if (!chats.length) list.textContent = "No chats yet.";
+    if (!chats.length) {
+      list.textContent = "No chats yet.";
+      return;
+    }
     chats.forEach(c => {
       const div = document.createElement('div');
       div.className = 'chat-item';
-      div.textContent = c.conversations.title || 'Private Chat';
-      div.onclick = () => openChat(c.conversation_id, div.textContent);
+      div.textContent = c.title || 'Private Chat';
+      div.onclick = () => openChat(c.id, div.textContent);
       list.appendChild(div);
     });
   } catch (err) {
     console.error("Failed to load chats:", err);
+    document.getElementById('chatList').textContent = "Failed to load chats.";
   }
 }
 
@@ -225,9 +229,11 @@ async function newChat() {
       body: JSON.stringify({ session_token: getToken(), user_ids: [myUserId, otherUser] })
     });
     const data = await res.json();
-    if (data.conversation_id) {
-      loadChats(); // refresh chat list
-      openChat(data.conversation_id, data.title || 'New Chat');
+    if (data.id) {
+      loadChats();
+      openChat(data.id, data.title || 'New Chat');
+    } else {
+      alert("Failed to create chat: " + JSON.stringify(data));
     }
   } catch (err) {
     console.error("Failed to create new chat:", err);
