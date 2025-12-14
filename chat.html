@@ -58,6 +58,11 @@ body {
   font-size: 11px;
   color: #555;
 }
+.reactions {
+  margin-top: 4px;
+  font-size: 16px;
+  cursor: pointer;
+}
 #inputBar {
   display: flex;
   padding: 10px;
@@ -181,21 +186,56 @@ async function sendMessage() {
       body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, content: input.value })
     });
     input.value = '';
+    await loadMessages(); // refresh messages including reactions
   } catch (err) {
     console.error("Failed to send message:", err);
   }
 }
 
 /* -----------------------
-   RENDER MESSAGE
+   RENDER MESSAGE WITH REACTIONS
 ----------------------- */
 function renderMessage(msg) {
   const div = document.createElement('div');
   div.className = 'message' + (msg.sender_id === myUserId ? ' you' : '');
   const time = new Date(msg.created_at).toLocaleTimeString();
-  div.innerHTML = `<div>${msg.content}</div><div class="meta">${time}</div>`;
+  div.id = `msg-${msg.id}`;
+
+  div.innerHTML = `
+    <div>${msg.content}</div>
+    <div class="reactions" id="reactions-${msg.id}">Loading…</div>
+    <div class="meta">${time}</div>
+  `;
+
   document.getElementById('messages').appendChild(div);
   document.getElementById('messages').scrollTop = 999999;
+
+  // Load reactions for this message
+  loadReactions(msg.id);
+}
+
+/* -----------------------
+   LOAD REACTIONS
+----------------------- */
+async function loadReactions(messageId) {
+  try {
+    const res = await fetch(`/.netlify/functions/chat-reactions?message_id=${messageId}`);
+    const reactions = await res.json();
+    const container = document.getElementById(`reactions-${messageId}`);
+
+    if (!reactions || reactions.length === 0) {
+      container.textContent = "No reactions";
+      return;
+    }
+
+    // Show up to 30 emojis
+    container.innerHTML = reactions.slice(0,30).map(r => r.emoji).join(' ');
+
+  } catch (err) {
+    console.error("Failed to load reactions:", err);
+    const container = document.getElementById(`reactions-${messageId}`);
+    container.textContent = "Failed to load reactions";
+  }
 }
 
 /* -----------------------
@@ -208,7 +248,15 @@ function getToken() {
 /* -----------------------
    EXTRA FEATURES
 ----------------------- */
-function openReactions() { if(conversationId) fetch(`/.netlify/functions/chat-reactions?conversation_id=${conversationId}`); }
+function openReactions() {
+  if (!conversationId) return;
+  // Reload reactions for all messages
+  document.querySelectorAll('.message').forEach(msgDiv => {
+    const msgId = msgDiv.id.replace('msg-', '');
+    loadReactions(msgId);
+  });
+}
+
 function openFiles() { if(conversationId) fetch(`/.netlify/functions/chat-files?conversation_id=${conversationId}`); }
 function openBots() { if(conversationId) fetch(`/.netlify/functions/chat-bots?conversation_id=${conversationId}`); }
 function toggleMute() { if(conversationId) fetch('/.netlify/functions/chat-mute', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ session_token:getToken(), conversation_id:conversationId }) }); }
