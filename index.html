@@ -1,164 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Create a Bot</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f9fafc;
-      margin: 0;
-      padding: 40px;
-      text-align: center;
-    }
-    h1 { color: #333; }
-    form { margin: 20px auto; max-width: 500px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);}
-    textarea, select, input { width: 100%; margin-bottom: 15px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px; }
-    button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-    button:hover { background: #0056b3; }
-    .output { margin-top: 20px; font-family: monospace; padding: 15px; border-radius: 6px; }
-    .output.success { background: #e6ffed; color: #256d1b; border: 1px solid #8dd48a; }
-    .output.error { background: #ffe6e6; color: #a12626; border: 1px solid #f5a3a3; }
-    .links-container { margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
-    .links-container a { background: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; color: #007bff; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
-    .links-container a:hover { background: #007bff; color: white; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Friend Requests & Create Bot</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f9fafc; margin:0; padding:20px; text-align:center; }
+  h1 { color:#333; }
+  .profile-header { display:flex; align-items:center; justify-content:center; margin-bottom:20px; gap:15px; }
+  .profile-header img { width:50px; height:50px; border-radius:50%; object-fit:cover; }
+  .online { color:lime; font-weight:bold; }
+  .offline { color:gray; font-weight:bold; }
+  form { margin:20px auto; max-width:500px; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+  input, textarea, select, button { width:100%; margin-bottom:15px; padding:10px; font-size:14px; border-radius:5px; border:1px solid #ccc; }
+  button { background:#007bff; color:white; border:none; cursor:pointer; }
+  button:hover { background:#0056b3; }
+  .output { margin-top:15px; font-family:monospace; padding:10px; border-radius:6px; }
+  .output.success { background:#e6ffed; color:#256d1b; border:1px solid #8dd48a; }
+  .output.error { background:#ffe6e6; color:#a12626; border:1px solid #f5a3a3; }
+  .links-container { margin-top:25px; display:flex; justify-content:center; flex-wrap:wrap; gap:10px; }
+  .links-container a { padding:8px 15px; background:#fff; border-radius:8px; text-decoration:none; color:#007bff; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.1); transition:0.2s; }
+  .links-container a:hover { background:#007bff; color:#fff; }
+  #incomingRequests div { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:5px; background:#fff; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+  #incomingRequests div button { margin-left:5px; padding:3px 8px; }
+</style>
 </head>
 <body>
 
-  <h1>🤖 Create Your Custom Bot</h1>
+<div class="profile-header" id="profile"></div>
 
-  <form id="botForm">
-    <input type="text" id="botName" placeholder="Bot Name" required />
-    <textarea id="description" placeholder="Describe your bot..." required></textarea>
+<h1>🤖 Create Your Bot</h1>
 
-    <label for="voiceSelect">Select Voice:</label>
-    <select id="voiceSelect" required>
-      <option value="">Loading voices...</option>
-    </select>
+<form id="botForm">
+  <input type="text" id="botName" placeholder="Bot Name" required />
+  <textarea id="description" placeholder="Describe your bot..." required></textarea>
 
-    <label for="fbxSelect">Select FBX Model:</label>
-    <select id="fbxSelect" required>
-      <option value="">Choose FBX Model</option>
-    </select>
+  <label for="voiceSelect">Select Voice:</label>
+  <select id="voiceSelect" required><option value="">Loading voices...</option></select>
 
-    <input type="text" id="gumroadLink" placeholder="Optional Gumroad Link for paid model" />
-    <button type="submit">Create Bot</button>
-  </form>
+  <label for="fbxSelect">Select FBX Model:</label>
+  <select id="fbxSelect" required><option value="">Choose FBX Model</option></select>
 
-  <div id="output" class="output"></div>
+  <input type="text" id="gumroadLink" placeholder="Optional Gumroad Link for paid model" />
+  <button type="submit">Create Bot</button>
+</form>
 
-  <!-- Links to other pages -->
-  <div class="links-container">
-    <a href="/create.html">⚙️ Create a Bot</a>
-    <a href="/marketplace.html">🛒 Marketplace</a>
-    <a href="/explore.html">🔍 Explore Bots</a>
-    <a href="/index.html">🏠 Home</a>
-    <a href="/login.html"> 🔗 Login</a>
-    <a href="/singup.html"> 🎞️ Singup</a>
-  </div>
+<div id="output" class="output"></div>
 
-  <!-- espeakng.js loader -->
-  <script src="/netlify/functions/espeakng-min.js"></script>
+<h2>Incoming Friend Requests</h2>
+<div id="incomingRequests"></div>
 
-  <script>
-    const form = document.getElementById('botForm');
-    const output = document.getElementById('output');
-    const voiceSelect = document.getElementById('voiceSelect');
-    const fbxSelect = document.getElementById('fbxSelect');
+<input type="email" id="friendEmail" placeholder="Friend's Email">
+<button id="sendRequestBtn">Send Friend Request</button>
 
-    // Netlify function paths
-    const createBotPath = window.location.hostname.includes('localhost')
-      ? '/netlify/functions/overpoweredbot'
-      : '/.netlify/functions/overpoweredbot';
+<div class="links-container">
+  <a href="/create.html">⚙️ Create a Bot</a>
+  <a href="/marketplace.html">🛒 Marketplace</a>
+  <a href="/explore.html">🔍 Explore Bots</a>
+  <a href="/index.html">🏠 Home</a>
+  <a href="/login.html">🔗 Login</a>
+  <a href="/signup.html">🎞️ Signup</a>
+</div>
 
-    const voicesPath = window.location.hostname.includes('localhost')
-      ? '/netlify/functions/get-voices'
-      : '/.netlify/functions/get-voices';
+<script>
+  // -----------------------
+  // AUTO LOGIN DEMO
+  // -----------------------
+  let userEmail = localStorage.getItem('userEmail');
+  if(!userEmail){
+    userEmail = prompt('Enter your email for demo auto-login:');
+    localStorage.setItem('userEmail', userEmail);
+  }
 
-    // Load Voices
-    async function loadVoices() {
-      try {
-        const res = await fetch(voicesPath);
-        const voices = await res.json();
-        voiceSelect.innerHTML = '<option value="">Select Voice</option>';
-        voices.forEach(v => {
-          const opt = document.createElement('option');
-          opt.value = v.id;
-          opt.textContent = `${v.name} (${v.lang})`;
-          voiceSelect.appendChild(opt);
-        });
-      } catch (err) {
-        console.error("Failed to load voices:", err);
-        voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
-      }
+  // -----------------------
+  // PROFILE
+  // -----------------------
+  async function loadProfile(){
+    try {
+      const res = await fetch('/.netlify/functions/profileCreation', {
+        method:'POST',
+        body: JSON.stringify({ email: userEmail })
+      });
+      const user = await res.json();
+      const div = document.getElementById('profile');
+      const online = (Date.now() - new Date(user.last_online)) < 5*60*1000 ? 'online' : 'offline';
+      div.innerHTML = `<img src="${user.profile_picture || 'default.png'}" />
+                       <span>${user.username || user.email} - <span class="${online}">${online}</span></span>`;
+    } catch(e){ console.error('Failed to load profile', e); }
+  }
+
+  // -----------------------
+  // FRIEND REQUESTS
+  // -----------------------
+  async function loadIncoming(){
+    try {
+      const res = await fetch('/.netlify/functions/friend-requests', {
+        method:'POST',
+        body: JSON.stringify({ action:'list', user_email:userEmail })
+      });
+      const data = await res.json();
+      const container = document.getElementById('incomingRequests');
+      container.innerHTML = '';
+      data.forEach(req=>{
+        const div = document.createElement('div');
+        div.innerHTML = `<span>${req.sender_email}</span>
+          <button onclick="respond('${req.id}','accepted')">Accept</button>
+          <button onclick="respond('${req.id}','rejected')">Reject</button>`;
+        container.appendChild(div);
+      });
+    } catch(e){ console.error(e); }
+  }
+
+  window.respond = async (id,status)=>{
+    const res = await fetch('/.netlify/functions/friend-requests', {
+      method:'POST',
+      body: JSON.stringify({ action:'respond', request_id:id, status })
+    });
+    const data = await res.json();
+    alert(data.success ? `Request ${status}` : data.error);
+    loadIncoming();
+  }
+
+  document.getElementById('sendRequestBtn').addEventListener('click', async ()=>{
+    const receiver_email = document.getElementById('friendEmail').value;
+    const res = await fetch('/.netlify/functions/friend-requests',{
+      method:'POST',
+      body:JSON.stringify({ action:'send', sender_email:userEmail, receiver_email })
+    });
+    const data = await res.json();
+    alert(data.success ? 'Request sent!' : data.error);
+    loadIncoming();
+  });
+
+  // -----------------------
+  // BOT CREATION
+  // -----------------------
+  const form = document.getElementById('botForm');
+  const output = document.getElementById('output');
+  const voiceSelect = document.getElementById('voiceSelect');
+  const fbxSelect = document.getElementById('fbxSelect');
+
+  const createBotPath = '/.netlify/functions/overpoweredbot';
+  const voicesPath = '/.netlify/functions/get-voices';
+
+  async function loadVoices(){
+    try{
+      const res = await fetch(voicesPath);
+      const voices = await res.json();
+      voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+      voices.forEach(v=>{
+        const opt = document.createElement('option');
+        opt.value=v.id; opt.textContent=`${v.name} (${v.lang})`; voiceSelect.appendChild(opt);
+      });
+    }catch(err){
+      voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
     }
-    loadVoices();
+  }
 
-    // Placeholder FBX Models
-    const fbxModels = [
-      {id: 'model1', name: 'Humanoid Default'},
-      {id: 'model2', name: 'Robot Model'}
-    ];
-    fbxModels.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.name;
-      fbxSelect.appendChild(opt);
-    });
+  const fbxModels = [{id:'model1',name:'Humanoid Default'},{id:'model2',name:'Robot Model'}];
+  fbxModels.forEach(m=>{
+    const opt = document.createElement('option'); opt.value=m.id; opt.textContent=m.name; fbxSelect.appendChild(opt);
+  });
 
-    // Submit Bot
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('botName').value.trim();
-      const description = document.getElementById('description').value.trim();
-      const voice_id = voiceSelect.value;
-      const fbx_model_id = fbxSelect.value;
-      const gumroadLink = document.getElementById('gumroadLink').value.trim();
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const name = document.getElementById('botName').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const voice_id = voiceSelect.value;
+    const fbx_model_id = fbxSelect.value;
+    const paid_link = document.getElementById('gumroadLink').value.trim();
 
-      if (!name || !description || !voice_id || !fbx_model_id) {
-        output.textContent = 'Please fill all required fields.';
-        output.className = 'output error';
-        return;
-      }
+    if(!name||!description||!voice_id||!fbx_model_id){
+      output.textContent='Please fill all required fields.'; output.className='output error'; return;
+    }
 
-      output.textContent = 'Creating bot...';
-      output.className = 'output';
+    output.textContent='Creating bot...'; output.className='output';
 
-      try {
-        const res = await fetch(createBotPath, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link: gumroadLink })
-        });
+    try{
+      const res = await fetch(createBotPath,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link })
+      });
+      const data = await res.json();
+      if(!res.ok || data.error){ output.textContent=`Error: ${data.error||'Unknown'}`; output.className='output error'; return; }
+      output.innerHTML=`<strong>Bot Created Successfully!</strong><br>ID/Hash: ${data.id||'N/A'}<br>API Key: ${data.apiKey||'Check Backend'}<br>File: bot.js<br><br>
+        <a href="/explore.html">🔍 Explore</a> | <a href="/index.html">🏠 Home</a>`;
+      output.className='output success'; form.reset();
+    }catch(err){
+      output.textContent='Failed to create bot.'; output.className='output error';
+    }
+  });
 
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          output.textContent = `Error creating bot: ${data.error || 'Unknown error'}`;
-          output.className = 'output error';
-          return;
-        }
-
-        output.innerHTML = `
-          <strong>Bot Created Successfully!</strong><br>
-          ID/Hash: ${data.hash || 'N/A'}<br>
-          API Key: ${data.apiKey || 'Check Supabase'}<br>
-          File: bot.js<br><br>
-          <a href="/explore.html">🔍 View Explore Page</a> |
-          <a href="/index.html">🏠 Home</a>
-        `;
-        output.className = 'output success';
-        form.reset();
-
-      } catch (err) {
-        console.error(err);
-        output.textContent = 'Failed to create bot.';
-        output.className = 'output error';
-      }
-    });
-  </script>
+  // INITIAL LOAD
+  loadProfile(); loadIncoming(); loadVoices();
+</script>
 </body>
 </html>
-
-
-
