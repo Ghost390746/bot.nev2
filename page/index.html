@@ -23,6 +23,15 @@
   }
   #start-menu button:hover { background: rgba(255,255,255,1); }
   body.custom-cursor { cursor: url('emoji_cursor.png'), auto; }
+  #settings-panel {
+    position: absolute;
+    top: 10px; left: 10px;
+    background: rgba(255,255,255,0.9);
+    padding: 10px 15px;
+    border-radius: 8px;
+    z-index: 20;
+  }
+  #settings-panel label { display:block; margin-top:10px; }
 </style>
 </head>
 <body class="custom-cursor">
@@ -35,11 +44,23 @@
   <source src="assets/animations/startCutscene/Cutscene.mp4" type="video/mp4">
 </video>
 
-<audio id="music" autoplay loop>
+<audio id="music" loop>
   <source src="assets/music.mp3" type="audio/mpeg">
 </audio>
 
-<div id="start-menu">
+<div id="settings-panel">
+  <label>
+    <input type="checkbox" id="bgToggle" checked>
+    Play Background Video
+  </label>
+  <label>
+    <input type="checkbox" id="musicToggle" checked>
+    Play Music
+  </label>
+  <button id="playCutsceneBtn">Play Cutscene</button>
+</div>
+
+<div id="start-menu" style="display:none;">
   <h1>Welcome to Platform</h1>
   <button onclick="goToEditor('boteos')">Boteos Editor</button>
   <button onclick="goToEditor('projects')">Projects Editor</button>
@@ -52,17 +73,39 @@
 <script src="main.js"></script>
 <script>
 const cutscene = document.getElementById('cutscene');
-const startMenu = document.getElementById('start-menu');
+const bgVideo = document.getElementById('bg-video');
 const music = document.getElementById('music');
+const startMenu = document.getElementById('start-menu');
+const playCutsceneBtn = document.getElementById('playCutsceneBtn');
+const bgToggle = document.getElementById('bgToggle');
+const musicToggle = document.getElementById('musicToggle');
 
-// Show cutscene for 5 seconds before showing start menu
-cutscene.style.display = 'block';
-document.getElementById('bg-video').style.display = 'none';
-cutscene.play();
+// Toggle background video
+bgToggle.addEventListener('change', () => {
+  bgVideo.style.display = bgToggle.checked ? 'block' : 'none';
+  if(bgToggle.checked && bgVideo.paused) bgVideo.play();
+  if(!bgToggle.checked) bgVideo.pause();
+});
+
+// Toggle music
+musicToggle.addEventListener('change', () => {
+  if(musicToggle.checked) music.play().catch(()=>{});
+  else music.pause();
+});
+
+// Play cutscene when button is clicked
+playCutsceneBtn.addEventListener('click', () => {
+  cutscene.style.display = 'block';
+  if(bgToggle.checked) bgVideo.style.display = 'none';
+  cutscene.muted = false;
+  cutscene.play().catch(()=>{ alert('Play was blocked, click again!'); });
+});
+
+// After cutscene ends
 cutscene.onended = () => {
   cutscene.style.display = 'none';
-  document.getElementById('bg-video').style.display = 'block';
-  music.play();
+  if(bgToggle.checked) bgVideo.style.display = 'block';
+  if(musicToggle.checked) music.play().catch(()=>{});
   startMenu.style.display = 'block';
 };
 
@@ -74,7 +117,7 @@ function goToMarket(type) {
   window.location.href = `/platform/marketplaces/${type}.html`;
 }
 
-// Keep full screen
+// Keep full screen on click
 document.addEventListener('click', () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(()=>{});
