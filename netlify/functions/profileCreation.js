@@ -9,8 +9,33 @@ export const handler = async (event) => {
       return { statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
     }
 
+    // -----------------------------
+    // Read session token from cookie
+    // -----------------------------
+    const cookies = event.headers.cookie || '';
+    const match = cookies.match(/session_token=([^;]+)/);
+    const session_token = match ? match[1] : null;
+
+    if (!session_token) {
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Unauthorized: No session token.' }) };
+    }
+
+    // -----------------------------
+    // Verify session & get user
+    // -----------------------------
+    const { data: sessions, error: sessionError } = await supabase
+      .from('sessions') // assume you have a 'sessions' table storing {id, user_id, token, expires_at}
+      .select('user_id')
+      .eq('token', session_token)
+      .single();
+
+    if (sessionError || !sessions) {
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid session.' }) };
+    }
+
+    const user_id = sessions.user_id;
+
     const {
-      email,
       step,
       username,
       bio,
@@ -21,15 +46,13 @@ export const handler = async (event) => {
       current_password
     } = JSON.parse(event.body);
 
-    if (!email) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Email is required.' }) };
-    }
-
-    // Fetch user
+    // -----------------------------
+    // Fetch user by ID
+    // -----------------------------
     let { data: user, error: fetchError } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
+      .eq('id', user_id)
       .single();
 
     if (fetchError || !user) {
@@ -72,7 +95,7 @@ export const handler = async (event) => {
       if (!['online', 'offline'].includes(online_status))
         return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid online_status value.' }) };
       updates.online_status = online_status;
-      updates.last_online = new Date().toISOString(); // optional timestamp update
+      updates.last_online = new Date().toISOString();
     }
 
     // -----------------------------
@@ -93,18 +116,13 @@ export const handler = async (event) => {
     const { data: updatedUser, error: updateError } = await supabase
       .from('users')
       .update(updates)
-      .eq('email', email)
+      .eq('id', user_id)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
-    // Ensure the returned object has all expected fields for frontend
-    const responseUser = {
-      ...user,
-      ...updatedUser,
-      password: undefined // hide password
-    };
+    const responseUser = { ...user, ...updatedUser, password: undefined };
 
     return {
       statusCode: 200,
