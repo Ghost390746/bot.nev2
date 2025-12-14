@@ -59,10 +59,10 @@ export const handler = async (event) => {
       current_password
     } = JSON.parse(event.body);
 
-    const updates = {};
+    let updates = {};
 
     // -----------------------------
-    // Handle profile creation steps (flexible)
+    // Handle profile creation steps
     // -----------------------------
     switch (step) {
       case 1:
@@ -70,24 +70,19 @@ export const handler = async (event) => {
         updates.username = username;
         updates.bio = bio;
         break;
-
       case 2:
         if (!profile_picture) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Profile picture required.' }) };
         updates.profile_picture = profile_picture;
         break;
-
       case 3:
         if (!fbx_avatar_ids || !Array.isArray(fbx_avatar_ids) || fbx_avatar_ids.length > 3)
           return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Must select up to 3 FBX avatars.' }) };
         updates.fbx_avatar_ids = fbx_avatar_ids;
         break;
-
       case 4:
         updates.completed_profile = true;
         break;
-
       default:
-        // Partial updates if no step is provided
         if (username) updates.username = username;
         if (bio) updates.bio = bio;
         if (profile_picture) updates.profile_picture = profile_picture;
@@ -116,6 +111,11 @@ export const handler = async (event) => {
     }
 
     // -----------------------------
+    // Remove undefined keys (safety)
+    // -----------------------------
+    updates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+
+    // -----------------------------
     // Apply updates
     // -----------------------------
     const { data: updatedUser, error: updateError } = await supabase
@@ -125,7 +125,17 @@ export const handler = async (event) => {
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('Supabase update error:', updateError);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          success: false,
+          error: 'Failed to update profile.',
+          details: updateError
+        })
+      };
+    }
 
     const responseUser = { ...user, ...updatedUser, password: undefined };
 
@@ -139,10 +149,10 @@ export const handler = async (event) => {
     };
 
   } catch (err) {
-    console.error(err);
+    console.error('Unexpected error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ success: false, error: 'Failed to update profile.' })
+      body: JSON.stringify({ success: false, error: 'Failed to update profile.', details: err.message })
     };
   }
 };
