@@ -54,12 +54,16 @@
 <button id="sendRequestBtn">Send Friend Request</button>
 
 <div class="links-container">
-  <a href="/create.html">⚙️ Create a Bot</a>
-  <a href="/marketplace.html">🛒 Marketplace</a>
-  <a href="/explore.html">🔍 Explore Bots</a>
-  <a href="/index.html">🏠 Home</a>
-  <a href="/login.html">🔗 Login</a>
-  <a href="/signup.html">🎞️ Signup</a>
+  <nav>
+  <!-- Example of special URLs with usernames or character references -->
+  <a href="/create.html?user=@scoobydo">⚙️ Create a Bot</a>
+  <a href="/marketplace.html?character=scoobydo">🛒 Marketplace</a>
+  <a href="/explore.html?user=@scoobydo">🔍 Explore Bots</a>
+  <a href="/index.html?user=@scoobydo">🏠 Home</a>
+  <a href="/login.html?redirect=user=@scoobydo">🔗 Login</a>
+  <a href="/signup.html?ref=@scoobydo">🎞️ Signup</a>
+</nav>
+
 </div>
 
 <script>
@@ -218,3 +222,4 @@ async function loadProfile() {
 </script>
 </body>
 </html>
+
