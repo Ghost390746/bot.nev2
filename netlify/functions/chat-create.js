@@ -1,41 +1,46 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { supabase, verifySession } from './_auth.js';
 
 export async function handler(event) {
   try {
-    const { title, user_ids } = JSON.parse(event.body);
+    const { session_token, title, user_ids } = JSON.parse(event.body);
+    const creator_id = await verifySession(session_token);
 
     if (!Array.isArray(user_ids) || user_ids.length < 2) {
-      return { statusCode: 400, body: 'At least 2 users required' };
+      return { statusCode: 400, body: 'Need at least 2 users' };
+    }
+
+    // Monthly limit
+    const start = new Date();
+    start.setDate(1);
+
+    const { count } = await supabase
+      .from('conversations')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', start.toISOString());
+
+    if (count >= 100) {
+      return { statusCode: 403, body: 'Monthly chat limit reached' };
     }
 
     const is_group = user_ids.length > 2;
 
-    const { data: convo, error } = await supabase
+    const { data: convo } = await supabase
       .from('conversations')
-      .insert([{ title, is_group }])
+      .insert([{ title, is_group, owner_id: creator_id }])
       .select()
       .single();
 
-    if (error) throw error;
-
-    const members = user_ids.map(uid => ({
+    const members = [...new Set([creator_id, ...user_ids])].map(id => ({
       conversation_id: convo.id,
-      user_id: uid
+      user_id: id,
+      role: id === creator_id ? 'admin' : 'member'
     }));
 
     await supabase.from('conversation_members').insert(members);
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ conversation_id: convo.id })
-    };
+    return { statusCode: 200, body: JSON.stringify(convo) };
 
-  } catch (err) {
-    return { statusCode: 500, body: err.message };
+  } catch (e) {
+    return { statusCode: 401, body: e.message };
   }
 }
