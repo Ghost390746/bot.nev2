@@ -67,28 +67,31 @@
 </div>
 
 <script>
+ <script>
+ <script>
   // -----------------------
-  // USE SESSION TOKEN
+  // GET SESSION TOKEN
   // -----------------------
-const jwtToken = getCookie('jwt'); // or wherever you store it
-const res = await fetch('/.netlify/functions/profileCreation', {
-  method: 'POST',
-  headers: { 
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${jwtToken}`
-  },
-  body: JSON.stringify({})
-});
+function getSessionToken() {
+  return document.cookie
+    .split('; ')
+    .find(row => row.startsWith('session_token='))
+    ?.split('=')[1];
+}
 
- // PROFILE
+// -----------------------
+// PROFILE
+// -----------------------
 async function loadProfile() {
   try {
-    const jwtToken = getCookie('jwt');
+    const token = getSessionToken();
+    if(!token) throw new Error('No session token found');
+
     const res = await fetch('/.netlify/functions/profileCreation', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${jwtToken}`
+        'Authorization': `Bearer ${token}`
       }
     });
 
@@ -98,11 +101,10 @@ async function loadProfile() {
     const user = result.user;
     window.userEmail = user.email;
 
-    // Render profile
     const div = document.getElementById('profile');
-    const online = (Date.now() - new Date(user.last_online)) < 5 * 60 * 1000 ? 'online' : 'offline';
-    const avatarUrl = user.profile_picture && user.profile_picture.startsWith('data:')
-      ? user.profile_picture
+    const online = (Date.now() - new Date(user.last_online)) < 5*60*1000 ? 'online' : 'offline';
+    const avatarUrl = user.profile_picture?.startsWith('data:') 
+      ? user.profile_picture 
       : `https://avatars.dicebear.com/api/initials/${encodeURIComponent(user.email)}.svg`;
 
     div.innerHTML = `
@@ -114,112 +116,137 @@ async function loadProfile() {
   }
 }
 
-  // -----------------------
-  // FRIEND REQUESTS
-  // -----------------------
-  async function loadIncoming() {
-    try {
-      const res = await fetch('/.netlify/functions/friend-requests', {
-        method:'POST',
-        body: JSON.stringify({ action:'list', user_email: window.userEmail })
-      });
-      const data = await res.json();
-      const container = document.getElementById('incomingRequests');
-      container.innerHTML = '';
-      data.forEach(req => {
-        const div = document.createElement('div');
-        div.innerHTML = `<span>${req.sender_email}</span>
-          <button onclick="respond('${req.id}','accepted')">Accept</button>
-          <button onclick="respond('${req.id}','rejected')">Reject</button>`;
-        container.appendChild(div);
-      });
-    } catch(e){ console.error(e); }
-  }
-
-  window.respond = async (id,status)=>{
+// -----------------------
+// FRIEND REQUESTS
+// -----------------------
+async function loadIncoming() {
+  try {
+    const token = getSessionToken();
     const res = await fetch('/.netlify/functions/friend-requests', {
       method:'POST',
-      body: JSON.stringify({ action:'respond', request_id:id, status })
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ action:'list', user_email: window.userEmail })
     });
     const data = await res.json();
-    alert(data.success ? `Request ${status}` : data.error);
-    loadIncoming();
+    const container = document.getElementById('incomingRequests');
+    container.innerHTML = '';
+    data.forEach(req => {
+      const div = document.createElement('div');
+      div.innerHTML = `<span>${req.sender_email}</span>
+        <button onclick="respond('${req.id}','accepted')">Accept</button>
+        <button onclick="respond('${req.id}','rejected')">Reject</button>`;
+      container.appendChild(div);
+    });
+  } catch(e){ console.error(e); }
+}
+
+window.respond = async (id,status)=>{
+  const token = getSessionToken();
+  const res = await fetch('/.netlify/functions/friend-requests', {
+    method:'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ action:'respond', request_id:id, status })
+  });
+  const data = await res.json();
+  alert(data.success ? `Request ${status}` : data.error);
+  loadIncoming();
+}
+
+document.getElementById('sendRequestBtn').addEventListener('click', async ()=>{
+  const token = getSessionToken();
+  const receiver_email = document.getElementById('friendEmail').value;
+  const res = await fetch('/.netlify/functions/friend-requests',{
+    method:'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ action:'send', sender_email:window.userEmail, receiver_email })
+  });
+  const data = await res.json();
+  alert(data.success ? 'Request sent!' : data.error);
+  loadIncoming();
+});
+
+// -----------------------
+// BOT CREATION
+// -----------------------
+const form = document.getElementById('botForm');
+const output = document.getElementById('output');
+const voiceSelect = document.getElementById('voiceSelect');
+const fbxSelect = document.getElementById('fbxSelect');
+
+const createBotPath = '/.netlify/functions/overpoweredbot';
+const voicesPath = '/.netlify/functions/get-voices';
+
+async function loadVoices() {
+  try{
+    const token = getSessionToken();
+    const res = await fetch(voicesPath, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const voices = await res.json();
+    voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+    voices.forEach(v=>{
+      const opt = document.createElement('option');
+      opt.value=v.id; 
+      opt.textContent=`${v.name} (${v.lang})`; 
+      voiceSelect.appendChild(opt);
+    });
+  }catch(err){
+    voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
+    console.error(err);
+  }
+}
+
+const fbxModels = [{id:'model1',name:'Humanoid Default'},{id:'model2',name:'Robot Model'}];
+fbxModels.forEach(m=>{
+  const opt = document.createElement('option'); opt.value=m.id; opt.textContent=m.name; fbxSelect.appendChild(opt);
+});
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const token = getSessionToken();
+  const name = document.getElementById('botName').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const voice_id = voiceSelect.value;
+  const fbx_model_id = fbxSelect.value;
+  const paid_link = document.getElementById('gumroadLink').value.trim();
+
+  if(!name||!description||!voice_id||!fbx_model_id){
+    output.textContent='Please fill all required fields.'; output.className='output error'; return;
   }
 
-  document.getElementById('sendRequestBtn').addEventListener('click', async ()=>{
-    const receiver_email = document.getElementById('friendEmail').value;
-    const res = await fetch('/.netlify/functions/friend-requests',{
+  output.textContent='Creating bot...'; output.className='output';
+
+  try{
+    const res = await fetch(createBotPath,{
       method:'POST',
-      body:JSON.stringify({ action:'send', sender_email:window.userEmail, receiver_email })
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body:JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link })
     });
     const data = await res.json();
-    alert(data.success ? 'Request sent!' : data.error);
-    loadIncoming();
-  });
-
-  // -----------------------
-  // BOT CREATION
-  // -----------------------
-  const form = document.getElementById('botForm');
-  const output = document.getElementById('output');
-  const voiceSelect = document.getElementById('voiceSelect');
-  const fbxSelect = document.getElementById('fbxSelect');
-
-  const createBotPath = '/.netlify/functions/overpoweredbot';
-  const voicesPath = '/.netlify/functions/get-voices';
-
-  async function loadVoices() {
-    try{
-      const res = await fetch(voicesPath);
-      const voices = await res.json();
-      voiceSelect.innerHTML = '<option value="">Select Voice</option>';
-      voices.forEach(v=>{
-        const opt = document.createElement('option');
-        opt.value=v.id; opt.textContent=`${v.name} (${v.lang})`; voiceSelect.appendChild(opt);
-      });
-    }catch(err){
-      voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
-    }
+    if(!res.ok || data.error){ output.textContent=`Error: ${data.error||'Unknown'}`; output.className='output error'; return; }
+    output.innerHTML=`<strong>Bot Created Successfully!</strong><br>ID/Hash: ${data.id||'N/A'}<br>API Key: ${data.apiKey||'Check Backend'}<br>File: bot.js<br><br>
+      <a href="/explore.html">🔍 Explore</a> | <a href="/index.html">🏠 Home</a>`;
+    output.className='output success'; form.reset();
+  }catch(err){
+    output.textContent='Failed to create bot.'; output.className='output error';
   }
+}
 
-  const fbxModels = [{id:'model1',name:'Humanoid Default'},{id:'model2',name:'Robot Model'}];
-  fbxModels.forEach(m=>{
-    const opt = document.createElement('option'); opt.value=m.id; opt.textContent=m.name; fbxSelect.appendChild(opt);
-  });
-
-  form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const name = document.getElementById('botName').value.trim();
-    const description = document.getElementById('description').value.trim();
-    const voice_id = voiceSelect.value;
-    const fbx_model_id = fbxSelect.value;
-    const paid_link = document.getElementById('gumroadLink').value.trim();
-
-    if(!name||!description||!voice_id||!fbx_model_id){
-      output.textContent='Please fill all required fields.'; output.className='output error'; return;
-    }
-
-    output.textContent='Creating bot...'; output.className='output';
-
-    try{
-      const res = await fetch(createBotPath,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link })
-      });
-      const data = await res.json();
-      if(!res.ok || data.error){ output.textContent=`Error: ${data.error||'Unknown'}`; output.className='output error'; return; }
-      output.innerHTML=`<strong>Bot Created Successfully!</strong><br>ID/Hash: ${data.id||'N/A'}<br>API Key: ${data.apiKey||'Check Backend'}<br>File: bot.js<br><br>
-        <a href="/explore.html">🔍 Explore</a> | <a href="/index.html">🏠 Home</a>`;
-      output.className='output success'; form.reset();
-    }catch(err){
-      output.textContent='Failed to create bot.'; output.className='output error';
-    }
-  });
-
-  // INITIAL LOAD
-  loadProfile().then(loadIncoming).then(loadVoices);
+// -----------------------
+// INITIAL LOAD
+// -----------------------
+loadProfile().then(loadIncoming).then(loadVoices);
 </script>
-</body>
-</html>
 
