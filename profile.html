@@ -10,9 +10,10 @@ body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
 .step.active { display: block; }
 input, textarea, select { width: 100%; padding: 8px; margin: 5px 0; }
 button { padding: 10px 15px; margin-top: 10px; }
-.fbx-options { display: flex; gap: 10px; }
+.fbx-options { display: flex; gap: 10px; flex-wrap: wrap; }
 .fbx-options div { padding: 10px; border: 1px solid #ccc; cursor: pointer; border-radius: 5px; }
 .fbx-options div.selected { border-color: #28a745; background: #e6ffe6; }
+#message { margin-top:20px; color: #333; }
 </style>
 </head>
 <body>
@@ -52,14 +53,20 @@ button { padding: 10px 15px; margin-top: 10px; }
   <button onclick="finishProfile()">Complete Profile</button>
 </div>
 
-<div id="message" style="margin-top:20px;"></div>
+<div id="message"></div>
 </div>
 
 <script>
-const email = prompt("Enter your email to start profile creation:");
 let currentStep = 1;
 let fbxSelected = [];
 
+// Get session token from cookie
+function getSessionToken() {
+  const match = document.cookie.match(/session_token=([^;]+)/);
+  return match ? match[1] : null;
+}
+
+// FBX selection logic
 document.querySelectorAll('.fbx-options div').forEach(el => {
   el.addEventListener('click', () => {
     if (fbxSelected.includes(el.dataset.id)) {
@@ -74,50 +81,55 @@ document.querySelectorAll('.fbx-options div').forEach(el => {
 
 function showStep(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-  document.getElementById(`step-${step}`).classList.add('active');
+  const stepEl = document.getElementById(`step-${step}`);
+  if(stepEl) stepEl.classList.add('active');
 }
 
+// Send step data to backend
 async function sendStepData(step, data) {
+  const session_token = getSessionToken();
+  if(!session_token) { alert("No session token found. Please log in."); return; }
+
   const res = await fetch('/.netlify/functions/profileCreation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, step, ...data })
+    body: JSON.stringify({ step, session_token, ...data })
   });
   const json = await res.json();
   return json;
 }
 
+// Next step handler
 async function nextStep() {
   let data = {};
   if (currentStep === 1) {
-    const username = document.getElementById('username').value;
-    const bio = document.getElementById('bio').value;
+    const username = document.getElementById('username').value.trim();
+    const bio = document.getElementById('bio').value.trim();
+    if(!username || !bio){ alert("Enter username and bio"); return; }
     data = { username, bio };
   } else if (currentStep === 2) {
     const fileInput = document.getElementById('profile-picture');
-    if (fileInput.files.length === 0) { alert("Upload a profile picture"); return; }
+    if(fileInput.files.length === 0){ alert("Upload a profile picture"); return; }
     const reader = new FileReader();
-    reader.readAsDataURL(fileInput.files[0]);
     await new Promise(resolve => reader.onload = () => { data.profile_picture = reader.result; resolve(); });
+    reader.readAsDataURL(fileInput.files[0]);
   } else if (currentStep === 3) {
-    if (fbxSelected.length === 0) { alert("Select at least 1 FBX avatar"); return; }
+    if(fbxSelected.length === 0){ alert("Select at least 1 FBX avatar"); return; }
     data = { fbx_avatar_ids: fbxSelected };
   }
 
   const response = await sendStepData(currentStep, data);
   document.getElementById('message').innerText = response.message || response.error;
-  if (response.success) {
-    currentStep++;
-    showStep(currentStep);
-  }
+  if(response.success){ currentStep++; showStep(currentStep); }
 }
 
+// Finish profile
 async function finishProfile() {
   const response = await sendStepData(currentStep, {});
   document.getElementById('message').innerText = response.message || response.error;
-  if (response.success) {
+  if(response.success){
     alert("Profile created successfully!");
-    window.location.href = '/marketplace.html'; // redirect to marketplace
+    window.location.href = '/marketplace.html';
   }
 }
 </script>
