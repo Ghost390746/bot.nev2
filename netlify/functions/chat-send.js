@@ -7,15 +7,15 @@ const supabase = createClient(
 
 export async function handler(event) {
   try {
-    const { conversation_id, message, user_id } = JSON.parse(event.body);
+    const { conversation_id, sender_id, content } = JSON.parse(event.body);
 
-    if (!conversation_id || !message || !user_id) {
-      return { statusCode: 400, body: 'Missing fields' };
+    if (!conversation_id || !sender_id || !content) {
+      return { statusCode: 400, body: 'Missing data' };
     }
 
     const { error } = await supabase
       .from('messages')
-      .insert([{ conversation_id, sender_id: user_id, content: message }]);
+      .insert([{ conversation_id, sender_id, content }]);
 
     if (error) throw error;
 
