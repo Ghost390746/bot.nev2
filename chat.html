@@ -135,13 +135,17 @@ let myUserId = null;
    INIT USER
 ----------------------- */
 async function initUser() {
-  const res = await fetch('/.netlify/functions/profileCreation', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ session_token: getToken() })
-  });
-  const data = await res.json();
-  myUserId = data.user.id;
+  try {
+    const res = await fetch('/.netlify/functions/profileCreation', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_token: getToken() })
+    });
+    const data = await res.json();
+    myUserId = data.user.id;
+  } catch {
+    alert("Failed to load user. Check session or backend.");
+  }
 }
 
 initUser();
@@ -150,19 +154,22 @@ initUser();
    LOAD CHAT LIST
 ----------------------- */
 async function loadChats() {
-  const res = await fetch('/.netlify/functions/chat-list?session_token=' + getToken());
-  const chats = await res.json();
+  try {
+    const res = await fetch('/.netlify/functions/chat-list?session_token=' + getToken());
+    const chats = await res.json();
+    const list = document.getElementById('chatList');
+    list.innerHTML = '';
 
-  const list = document.getElementById('chatList');
-  list.innerHTML = '';
-
-  chats.forEach(c => {
-    const div = document.createElement('div');
-    div.className = 'chat-item';
-    div.textContent = c.conversations.title || 'Private Chat';
-    div.onclick = () => openChat(c.conversation_id, div.textContent);
-    list.appendChild(div);
-  });
+    chats.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'chat-item';
+      div.textContent = c.conversations.title || 'Private Chat';
+      div.onclick = () => openChat(c.conversation_id, div.textContent);
+      list.appendChild(div);
+    });
+  } catch {
+    alert("Failed to load chats. Backend may not exist.");
+  }
 }
 
 /* -----------------------
@@ -172,7 +179,6 @@ async function openChat(id, title) {
   conversationId = id;
   document.getElementById('chatHeader').textContent = title;
   document.getElementById('messages').innerHTML = '';
-
   await loadMessages();
   startRealtime();
 }
@@ -181,9 +187,13 @@ async function openChat(id, title) {
    LOAD MESSAGES
 ----------------------- */
 async function loadMessages() {
-  const res = await fetch(`/.netlify/functions/chat-messages?id=${conversationId}`);
-  const msgs = await res.json();
-  msgs.forEach(renderMessage);
+  try {
+    const res = await fetch(`/.netlify/functions/chat-messages?id=${conversationId}`);
+    const msgs = await res.json();
+    msgs.forEach(renderMessage);
+  } catch {
+    alert("Failed to load messages. Backend may not exist.");
+  }
 }
 
 /* -----------------------
@@ -197,9 +207,7 @@ function startRealtime() {
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages' },
-      payload => {
-        renderMessage(payload.new);
-      }
+      payload => renderMessage(payload.new)
     )
     .subscribe();
 }
@@ -211,17 +219,20 @@ async function sendMessage() {
   const input = document.getElementById('msgInput');
   if (!input.value || !conversationId) return;
 
-  await fetch('/.netlify/functions/chat-send', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({
-      session_token: getToken(),
-      conversation_id: conversationId,
-      content: input.value
-    })
-  });
-
-  input.value = '';
+  try {
+    await fetch('/.netlify/functions/chat-send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        session_token: getToken(),
+        conversation_id: conversationId,
+        content: input.value
+      })
+    });
+    input.value = '';
+  } catch {
+    alert("Failed to send message. Backend may not exist.");
+  }
 }
 
 /* -----------------------
@@ -230,14 +241,8 @@ async function sendMessage() {
 function renderMessage(msg) {
   const div = document.createElement('div');
   div.className = 'message' + (msg.sender_id === myUserId ? ' you' : '');
-
   const time = new Date(msg.created_at).toLocaleTimeString();
-
-  div.innerHTML = `
-    <div>${msg.content}</div>
-    <div class="meta">${time}</div>
-  `;
-
+  div.innerHTML = `<div>${msg.content}</div><div class="meta">${time}</div>`;
   document.getElementById('messages').appendChild(div);
   document.getElementById('messages').scrollTop = 999999;
 }
@@ -254,49 +259,73 @@ function getToken() {
 /* -----------------------
    EXTRA FEATURES
 ----------------------- */
-function openReactions() {
-  alert('Feature: Reactions will open a reactions panel (needs backend)');
+async function openReactions() {
+  try {
+    await fetch('/.netlify/functions/chat-reactions?conversation_id=' + conversationId);
+  } catch {
+    alert("Reactions feature not available. Backend/table missing.");
+  }
 }
 
-function openFiles() {
-  alert('Feature: File sharing panel (needs backend)');
+async function openFiles() {
+  try {
+    await fetch('/.netlify/functions/chat-files?conversation_id=' + conversationId);
+  } catch {
+    alert("Files feature not available. Backend/table missing.");
+  }
 }
 
-function openBots() {
-  alert('Feature: Add bots panel (needs backend)');
+async function openBots() {
+  try {
+    await fetch('/.netlify/functions/chat-bots?conversation_id=' + conversationId);
+  } catch {
+    alert("Bots feature not available. Backend/table missing.");
+  }
 }
 
 async function toggleMute() {
   if (!conversationId) return;
-  await fetch('/.netlify/functions/chat-mute', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId })
-  });
-  alert('Chat muted/unmuted (needs backend)');
+  try {
+    await fetch('/.netlify/functions/chat-mute', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId })
+    });
+    alert("Chat muted/unmuted");
+  } catch {
+    alert("Mute feature backend/table missing.");
+  }
 }
 
 async function kickUser() {
   const userId = prompt("Enter User ID to kick:");
   if (!userId || !conversationId) return;
-  await fetch('/.netlify/functions/chat-kick', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, target_user_id: userId })
-  });
-  alert('Kick request sent (needs backend)');
+  try {
+    await fetch('/.netlify/functions/chat-kick', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, target_user_id: userId })
+    });
+    alert("Kick request sent");
+  } catch {
+    alert("Kick feature backend/table missing.");
+  }
 }
 
 async function renameChat() {
   const newTitle = prompt("Enter new chat name:");
   if (!newTitle || !conversationId) return;
-  await fetch('/.netlify/functions/chat-rename', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, new_title: newTitle })
-  });
-  document.getElementById('chatHeader').textContent = newTitle;
-  alert('Rename request sent (needs backend)');
+  try {
+    await fetch('/.netlify/functions/chat-rename', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_token: getToken(), conversation_id: conversationId, new_title: newTitle })
+    });
+    document.getElementById('chatHeader').textContent = newTitle;
+    alert("Rename request sent");
+  } catch {
+    alert("Rename feature backend/table missing.");
+  }
 }
 
 loadChats();
