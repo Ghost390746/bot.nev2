@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Platform Start Menu</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; font-family: Arial, sans-serif; }
+  #bg-video { position: fixed; top:0; left:0; width:100vw; height:100vh; object-fit: cover; z-index:-2; }
+  #cutscene { position: fixed; top:0; left:0; width:100vw; height:100vh; object-fit: cover; z-index:-1; display:none; }
+  #music { display:none; }
+  #start-menu {
+    position: absolute;
+    top:50%; left:50%;
+    transform: translate(-50%, -50%);
+    text-align:center;
+    z-index:10;
+  }
+  #start-menu button {
+    display:block; margin: 15px auto; padding:15px 25px;
+    font-size: 1.2rem; cursor:pointer; border-radius:8px;
+    border:none; background:rgba(255,255,255,0.8); transition: 0.3s;
+  }
+  #start-menu button:hover { background: rgba(255,255,255,1); }
+  body.custom-cursor { cursor: url('emoji_cursor.png'), auto; }
+</style>
+</head>
+<body class="custom-cursor">
+
+<video id="bg-video" autoplay loop muted>
+  <source src="bg.mp4" type="video/mp4">
+</video>
+
+<video id="cutscene">
+  <source src="animations/startCutscene/Cutscene.mp4" type="video/mp4">
+</video>
+
+<audio id="music" autoplay loop>
+  <source src="music.mp3" type="audio/mpeg">
+</audio>
+
+<div id="start-menu">
+  <h1>Welcome to Platform</h1>
+  <button onclick="goToEditor('boteos')">Boteos Editor</button>
+  <button onclick="goToEditor('projects')">Projects Editor</button>
+  <button onclick="goToEditor('webapps')">Web Apps Editor</button>
+  <button onclick="goToMarket('boteos')">Boteos Marketplace</button>
+  <button onclick="goToMarket('projects')">Projects Marketplace</button>
+  <button onclick="goToMarket('webapps')">Web Apps Marketplace</button>
+</div>
+
+<script src="main.js"></script>
+<script>
+const cutscene = document.getElementById('cutscene');
+const startMenu = document.getElementById('start-menu');
+const music = document.getElementById('music');
+
+// Show cutscene for 5 seconds before showing start menu
+cutscene.style.display = 'block';
+document.getElementById('bg-video').style.display = 'none';
+cutscene.play();
+cutscene.onended = () => {
+  cutscene.style.display = 'none';
+  document.getElementById('bg-video').style.display = 'block';
+  music.play();
+  startMenu.style.display = 'block';
+};
+
+function goToEditor(type) {
+  window.location.href = `/platform/editors/${type}.html`;
+}
+
+function goToMarket(type) {
+  window.location.href = `/platform/marketplaces/${type}.html`;
+}
+
+// Keep full screen
+document.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }
+});
+</script>
+
+</body>
+</html>

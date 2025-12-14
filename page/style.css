@@ -1,0 +1,75 @@
+/* Global page styling */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Arial', sans-serif;
+  height: 100%;
+  width: 100%;
+  background: black;
+}
+
+#bg-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: -2;
+}
+
+#cutscene {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: -1;
+  display: none;
+}
+
+body.custom-cursor {
+  cursor: url('emoji_cursor.png'), auto;
+}
+
+#start-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 1s ease-in-out;
+}
+
+#start-menu.show {
+  opacity: 1;
+}
+
+#start-menu h1 {
+  font-size: 3rem;
+  color: #fff;
+  margin-bottom: 40px;
+  text-shadow: 2px 2px 8px rgba(0,0,0,0.7);
+}
+
+#start-menu button {
+  display: block;
+  margin: 15px auto;
+  padding: 15px 25px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.8);
+  color: #000;
+  transition: all 0.3s ease;
+}
+
+#start-menu button:hover {
+  background: rgba(255,255,255,1);
+  transform: scale(1.05);
+}
