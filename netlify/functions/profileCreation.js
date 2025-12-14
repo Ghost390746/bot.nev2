@@ -21,38 +21,46 @@ export const handler = async (event) => {
     }
 
     // -----------------------------
-    // Verify session & get user
+    // Verify session & get user email
     // -----------------------------
-    const { data: sessions, error: sessionError } = await supabase
-      .from('sessions') // assume you have a 'sessions' table storing {id, user_id, token, expires_at}
-      .select('user_id')
-      .eq('token', session_token)
+    const { data: session, error: sessionError } = await supabase
+      .from('sessions')
+      .select('user_email, expires_at')
+      .eq('session_token', session_token)
       .single();
 
-    if (sessionError || !sessions) {
+    if (sessionError || !session) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid session.' }) };
     }
 
-    const user_id = sessions.user_id;
+    // Check if session expired
+    if (new Date(session.expires_at) < new Date()) {
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Session expired.' }) };
+    }
 
+    const user_email = session.user_email;
+
+    // -----------------------------
+    // Parse incoming data
+    // -----------------------------
     const {
       step,
       username,
       bio,
       profile_picture,
       fbx_avatar_ids,
-      online_status, // online/offline
-      new_password,  // for password change
+      online_status,
+      new_password,
       current_password
     } = JSON.parse(event.body);
 
     // -----------------------------
-    // Fetch user by ID
+    // Fetch user by email
     // -----------------------------
-    let { data: user, error: fetchError } = await supabase
+    const { data: user, error: fetchError } = await supabase
       .from('users')
       .select('*')
-      .eq('id', user_id)
+      .eq('email', user_email)
       .single();
 
     if (fetchError || !user) {
@@ -116,7 +124,7 @@ export const handler = async (event) => {
     const { data: updatedUser, error: updateError } = await supabase
       .from('users')
       .update(updates)
-      .eq('id', user_id)
+      .eq('email', user_email)
       .select()
       .single();
 
