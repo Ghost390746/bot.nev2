@@ -21,38 +21,19 @@ export const handler = async (event) => {
     }
 
     // -----------------------------
-    // Verify session & get user email
+    // Verify session & get user
     // -----------------------------
-    const { data: session, error: sessionError } = await supabase
+    const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
-      .select('user_email, expires_at')
+      .select('user_email')
       .eq('session_token', session_token)
       .single();
 
-    if (sessionError || !session) {
+    if (sessionError || !sessionData) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid session.' }) };
     }
 
-    // Check if session expired
-    if (new Date(session.expires_at) < new Date()) {
-      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Session expired.' }) };
-    }
-
-    const user_email = session.user_email;
-
-    // -----------------------------
-    // Parse incoming data
-    // -----------------------------
-    const {
-      step,
-      username,
-      bio,
-      profile_picture,
-      fbx_avatar_ids,
-      online_status,
-      new_password,
-      current_password
-    } = JSON.parse(event.body);
+    const user_email = sessionData.user_email;
 
     // -----------------------------
     // Fetch user by email
@@ -67,33 +48,51 @@ export const handler = async (event) => {
       return { statusCode: 404, body: JSON.stringify({ success: false, error: 'User not found.' }) };
     }
 
+    const {
+      step,
+      username,
+      bio,
+      profile_picture,
+      fbx_avatar_ids,
+      online_status,
+      new_password,
+      current_password
+    } = JSON.parse(event.body);
+
     const updates = {};
 
     // -----------------------------
-    // Handle profile creation steps
+    // Handle profile creation steps (flexible)
     // -----------------------------
-    if (step) {
-      switch (step) {
-        case 1:
-          if (!username || !bio) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Username and bio required.' }) };
-          updates.username = username;
-          updates.bio = bio;
-          break;
-        case 2:
-          if (!profile_picture) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Profile picture required.' }) };
-          updates.profile_picture = profile_picture;
-          break;
-        case 3:
-          if (!fbx_avatar_ids || !Array.isArray(fbx_avatar_ids) || fbx_avatar_ids.length > 3)
-            return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Must select up to 3 FBX avatars.' }) };
-          updates.fbx_avatar_ids = fbx_avatar_ids;
-          break;
-        case 4:
-          updates.completed_profile = true;
-          break;
-        default:
-          return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid step.' }) };
-      }
+    switch (step) {
+      case 1:
+        if (!username || !bio) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Username and bio required.' }) };
+        updates.username = username;
+        updates.bio = bio;
+        break;
+
+      case 2:
+        if (!profile_picture) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Profile picture required.' }) };
+        updates.profile_picture = profile_picture;
+        break;
+
+      case 3:
+        if (!fbx_avatar_ids || !Array.isArray(fbx_avatar_ids) || fbx_avatar_ids.length > 3)
+          return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Must select up to 3 FBX avatars.' }) };
+        updates.fbx_avatar_ids = fbx_avatar_ids;
+        break;
+
+      case 4:
+        updates.completed_profile = true;
+        break;
+
+      default:
+        // Partial updates if no step is provided
+        if (username) updates.username = username;
+        if (bio) updates.bio = bio;
+        if (profile_picture) updates.profile_picture = profile_picture;
+        if (fbx_avatar_ids) updates.fbx_avatar_ids = fbx_avatar_ids;
+        break;
     }
 
     // -----------------------------
@@ -111,10 +110,8 @@ export const handler = async (event) => {
     // -----------------------------
     if (new_password) {
       if (!current_password) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Current password required.' }) };
-
       const match = await bcrypt.compare(current_password, user.password);
       if (!match) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Incorrect current password.' }) };
-
       updates.password = await bcrypt.hash(new_password, 10);
     }
 
