@@ -1,8 +1,12 @@
 <script>
 const output = document.getElementById('output');
-document.getElementById('signupBtn').addEventListener('click', async () => {
+
+document.getElementById('signupBtn').addEventListener('click', async (e) => {
+  e.preventDefault(); // prevent redirect
+
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
+  const username = email.split('@')[0]; // optional: generate username
 
   if (!email || !password) {
     output.textContent = "Enter email and password.";
@@ -13,8 +17,9 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     const res = await fetch('/.netlify/functions/signup', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, username, password })
     });
+
     const data = await res.json();
 
     if (data.success) {
@@ -44,6 +49,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     } else {
       output.textContent = `Error: ${data.error}`;
     }
+
   } catch (err) {
     output.textContent = `Error: ${err.message}`;
   }
