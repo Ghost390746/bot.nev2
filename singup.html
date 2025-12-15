@@ -1,3 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signup — Botnev</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f9fafc; margin:0; padding:20px; text-align:center; }
+    h1 { color:#333; }
+    input, button { width:100%; max-width:400px; margin:10px 0; padding:10px; font-size:16px; border-radius:5px; border:1px solid #ccc; }
+    button { background:#007bff; color:white; border:none; cursor:pointer; }
+    button:hover { background:#0056b3; }
+    #output { margin-top:20px; font-family:monospace; padding:10px; border-radius:6px; }
+  </style>
+</head>
+<body>
+
+<h1>Signup for Botnev</h1>
+
+<!-- Email & Password Inputs -->
+<input type="email" id="email" placeholder="Email" required />
+<input type="password" id="password" placeholder="Password" required />
+
+<!-- Signup Button -->
+<button id="signupBtn">Signup</button>
+
+<!-- Output / Verification -->
+<div id="output"></div>
+
 <script>
 const output = document.getElementById('output');
 
@@ -55,3 +84,6 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
   }
 });
 </script>
+
+</body>
+</html>
