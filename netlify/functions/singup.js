@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// -----------------------
+// Password validation
+// -----------------------
 function validatePassword(password) {
   // Rule 1: >=30 characters
   if (password.length < 30) return false;
@@ -18,28 +21,62 @@ function validatePassword(password) {
   return true;
 }
 
+// -----------------------
+// Signup handler
+// -----------------------
 export const handler = async (event) => {
   try {
-    const { email, username, password } = JSON.parse(event.body);
+    let { email, username, password } = JSON.parse(event.body);
 
-    if (!validatePassword(password)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Password does not meet requirements.' }) };
+    if (!email || !password) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ success: false, error: 'Email and password are required.' })
+      };
     }
 
+    // Fallback username if not provided
+    if (!username) {
+      username = email.split('@')[0];
+    }
+
+    // Validate password
+    if (!validatePassword(password)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          success: false,
+          error: 'Password does not meet requirements.'
+        })
+      };
+    }
+
+    // Hash the password
     const hashed = await bcrypt.hash(password, 10);
-    const verificationCode = uuidv4().split('-')[0]; // short code
+
+    // Short verification code
+    const verificationCode = uuidv4().split('-')[0];
 
     // Store user in Supabase with verified = false
     const { data, error } = await supabase
       .from('users')
-      .insert({ email, username, password: hashed, verified: false, verification_code: verificationCode });
+      .insert({
+        email,
+        username,
+        password: hashed,
+        verified: false,
+        verification_code: verificationCode
+      });
 
     if (error) throw error;
 
     // Send verification email
     const transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
     });
 
     await transporter.sendMail({
@@ -49,10 +86,19 @@ export const handler = async (event) => {
       text: `Hello ${username},\n\nYour verification code is: ${verificationCode}\nUse this code to verify your account.`
     });
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, message: 'Signup successful, verification email sent!' }) };
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        message: 'Signup successful, verification email sent!'
+      })
+    };
 
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Failed to signup.' }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: 'Failed to signup.' })
+    };
   }
 };
