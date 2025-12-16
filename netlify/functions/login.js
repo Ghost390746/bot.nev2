@@ -17,7 +17,7 @@ export const handler = async (event) => {
       event.headers['client-ip'] ||
       'unknown';
 
-    const { email, password, remember_me, captcha_token } =
+    const { email, password, remember_me, captcha_token, google } =
       JSON.parse(event.body);
 
     // 🔐 Rate limiting
@@ -45,7 +45,19 @@ export const handler = async (event) => {
       };
     }
 
-    // Fetch user
+    // ⚠ Google login branch
+    if (google) {
+      // Instead of normal login, frontend will redirect to Google OAuth
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          redirect: '/.netlify/functions/googleStart'
+        })
+      };
+    }
+
+    // 🔐 Normal login flow (unchanged)
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
@@ -60,27 +72,19 @@ export const handler = async (event) => {
       };
     }
 
-    // Check password
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       await logAttempt(ip);
       return {
         statusCode: 401,
-        body: JSON.stringify({
-          success: false,
-          error: 'Incorrect password'
-        })
+        body: JSON.stringify({ success: false, error: 'Incorrect password' })
       };
     }
 
-    // Manual verification (kept exactly as you want)
     if (!user.verified) {
       return {
         statusCode: 403,
-        body: JSON.stringify({
-          success: false,
-          error: 'Email not verified'
-        })
+        body: JSON.stringify({ success: false, error: 'Email not verified' })
       };
     }
 
@@ -110,15 +114,11 @@ export const handler = async (event) => {
         session_token
       })
     };
-
   } catch (err) {
     console.error(err);
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        success: false,
-        error: 'Internal server error'
-      })
+      body: JSON.stringify({ success: false, error: 'Internal server error' })
     };
   }
 };
