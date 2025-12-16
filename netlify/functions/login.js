@@ -2,11 +2,48 @@ import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+import { verifyCaptcha } from './utils/verifyCaptcha.js';
+import { checkRateLimit, logAttempt } from './utils/rateLimit.js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 export const handler = async (event) => {
   try {
-    const { email, password, remember_me } = JSON.parse(event.body);
+    const ip =
+      event.headers['x-forwarded-for'] ||
+      event.headers['client-ip'] ||
+      'unknown';
+
+    const { email, password, remember_me, captcha_token } =
+      JSON.parse(event.body);
+
+    // 🔐 Rate limiting
+    const allowed = await checkRateLimit(ip);
+    if (!allowed) {
+      return {
+        statusCode: 429,
+        body: JSON.stringify({
+          success: false,
+          error: 'Too many login attempts. Try again later.'
+        })
+      };
+    }
+
+    // 🤖 CAPTCHA verification
+    const captchaValid = await verifyCaptcha(captcha_token, ip);
+    if (!captchaValid) {
+      await logAttempt(ip);
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          success: false,
+          error: 'CAPTCHA verification failed'
+        })
+      };
+    }
 
     // Fetch user
     const { data: user, error } = await supabase
@@ -16,6 +53,7 @@ export const handler = async (event) => {
       .single();
 
     if (error || !user) {
+      await logAttempt(ip);
       return {
         statusCode: 400,
         body: JSON.stringify({ success: false, error: 'User not found' })
@@ -25,31 +63,39 @@ export const handler = async (event) => {
     // Check password
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
+      await logAttempt(ip);
       return {
         statusCode: 401,
-        body: JSON.stringify({ success: false, error: 'Incorrect password' })
+        body: JSON.stringify({
+          success: false,
+          error: 'Incorrect password'
+        })
       };
     }
 
+    // Manual verification (kept exactly as you want)
     if (!user.verified) {
       return {
         statusCode: 403,
-        body: JSON.stringify({ success: false, error: 'Email not verified' })
+        body: JSON.stringify({
+          success: false,
+          error: 'Email not verified'
+        })
       };
     }
 
-    // Generate UUID session token
+    // Generate session
     const session_token = uuidv4();
     const expiresInDays = remember_me ? 90 : 1;
 
-    // Save session in Supabase
     await supabase.from('sessions').insert({
       user_email: email,
       session_token,
-      expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+      expires_at: new Date(
+        Date.now() + expiresInDays * 24 * 60 * 60 * 1000
+      )
     });
 
-    // Return cookie AND include token in JSON
     return {
       statusCode: 200,
       headers: {
@@ -61,7 +107,7 @@ export const handler = async (event) => {
       body: JSON.stringify({
         success: true,
         message: 'Login successful!',
-        session_token // ← now included for frontend
+        session_token
       })
     };
 
@@ -69,7 +115,10 @@ export const handler = async (event) => {
     console.error(err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ success: false, error: err.message })
+      body: JSON.stringify({
+        success: false,
+        error: 'Internal server error'
+      })
     };
   }
 };
