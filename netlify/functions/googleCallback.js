@@ -1,7 +1,5 @@
-import fetch from 'node-fetch';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-import qs from 'querystring'; // Node built-in module for URL encoding
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -10,22 +8,24 @@ const supabase = createClient(
 
 export const handler = async (event) => {
   try {
-    const code = event.queryStringParameters.code;
+    const code = event.queryStringParameters?.code;
     if (!code) return { statusCode: 400, body: 'Missing code' };
 
     const redirectUri = `${process.env.SITE_URL}/.netlify/functions/googleCallback`;
 
-    // 🔐 Exchange code for token (use URL-encoded body)
+    // 🔐 Exchange code for token
+    const params = new URLSearchParams({
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code'
+    });
+
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: qs.stringify({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      })
+      body: params.toString()
     });
 
     const tokenData = await tokenRes.json();
@@ -35,7 +35,6 @@ export const handler = async (event) => {
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
-
     const profile = await profileRes.json();
     const googleId = profile.id;
     const googleEmail = profile.email;
@@ -88,7 +87,7 @@ export const handler = async (event) => {
     };
 
   } catch (err) {
-    console.error(err);
+    console.error('Google callback error:', err);
     return { statusCode: 500, body: 'Internal server error' };
   }
 };
