@@ -34,6 +34,17 @@ export const handler = async (event) => {
     const { email, password, remember_me, captcha_token, google } =
       JSON.parse(event.body);
 
+    // ⚠ Google login branch first (skip CAPTCHA)
+    if (google) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          redirect: '/.netlify/functions/googleStart'
+        })
+      };
+    }
+
     // 🔐 Rate limiting
     const allowed = await checkRateLimit(ip);
     if (!allowed) {
@@ -46,7 +57,7 @@ export const handler = async (event) => {
       };
     }
 
-    // 🤖 CAPTCHA verification
+    // 🤖 CAPTCHA verification (only for normal login)
     const captchaValid = await verifyCaptcha(captcha_token, ip);
     if (!captchaValid) {
       await logAttempt(ip);
@@ -59,18 +70,7 @@ export const handler = async (event) => {
       };
     }
 
-    // ⚠ Google login branch
-    if (google) {
-      return {
-        statusCode: 200,
-        body: JSON.stringify({
-          success: true,
-          redirect: '/.netlify/functions/googleStart'
-        })
-      };
-    }
-
-    // 🔐 Normal login flow
+    // 🔐 Normal email/password login
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
@@ -101,16 +101,14 @@ export const handler = async (event) => {
       };
     }
 
-    // Generate session
+    // Generate session token
     const session_token = uuidv4();
     const expiresInDays = remember_me ? 90 : 1;
 
     await supabase.from('sessions').insert({
       user_email: email,
       session_token,
-      expires_at: new Date(
-        Date.now() + expiresInDays * 24 * 60 * 60 * 1000
-      )
+      expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
     });
 
     return {
