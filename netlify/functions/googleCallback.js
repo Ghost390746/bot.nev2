@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import qs from 'querystring'; // Node built-in module for URL encoding
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -10,17 +11,15 @@ const supabase = createClient(
 export const handler = async (event) => {
   try {
     const code = event.queryStringParameters.code;
-    if (!code) {
-      return { statusCode: 400, body: 'Missing code' };
-    }
+    if (!code) return { statusCode: 400, body: 'Missing code' };
 
     const redirectUri = `${process.env.SITE_URL}/.netlify/functions/googleCallback`;
 
-    // 🔐 Exchange code for token
+    // 🔐 Exchange code for token (use URL-encoded body)
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: qs.stringify({
         code,
         client_id: process.env.GOOGLE_CLIENT_ID,
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
@@ -30,19 +29,12 @@ export const handler = async (event) => {
     });
 
     const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      return { statusCode: 401, body: 'Google auth failed' };
-    }
+    if (!tokenData.access_token) return { statusCode: 401, body: 'Google auth failed' };
 
     // 👤 Get Google profile
-    const profileRes = await fetch(
-      'https://www.googleapis.com/oauth2/v2/userinfo',
-      {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`
-        }
-      }
-    );
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
 
     const profile = await profileRes.json();
     const googleId = profile.id;
@@ -55,7 +47,7 @@ export const handler = async (event) => {
       .eq('google_id', googleId)
       .single();
 
-    // 🔗 If not found, try linking by email
+    // 🔗 Link by email if Google ID not found
     if (!user) {
       const { data: emailUser } = await supabase
         .from('users')
@@ -64,52 +56,39 @@ export const handler = async (event) => {
         .single();
 
       if (!emailUser || !emailUser.verified) {
-        return {
-          statusCode: 403,
-          body: 'Account not verified or not approved'
-        };
+        return { statusCode: 403, body: 'Account not verified or not approved' };
       }
 
-      // Link Google to existing account
+      // Link Google account
       await supabase
         .from('users')
-        .update({
-          google_id: googleId,
-          google_email: googleEmail,
-          google_linked: true
-        })
+        .update({ google_id: googleId, google_email: googleEmail, google_linked: true })
         .eq('email', googleEmail);
 
       user = emailUser;
     }
 
-    // 🔐 Create session (same system you already use)
+    // 🔐 Create session
     const session_token = uuidv4();
     const expiresInDays = 7;
 
     await supabase.from('sessions').insert({
       user_email: user.email,
       session_token,
-      expires_at: new Date(
-        Date.now() + expiresInDays * 24 * 60 * 60 * 1000
-      )
+      expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
     });
 
+    // ✅ Redirect to main dashboard (index.html)
     return {
       statusCode: 302,
       headers: {
-        'Set-Cookie': `session_token=${session_token}; Path=/; Max-Age=${
-          expiresInDays * 24 * 60 * 60
-        }; SameSite=Lax`,
-        Location: '/dashboard.html'
+        'Set-Cookie': `session_token=${session_token}; Path=/; Max-Age=${expiresInDays * 24 * 60 * 60}; SameSite=Lax`,
+        Location: '/index.html'
       }
     };
 
   } catch (err) {
     console.error(err);
-    return {
-      statusCode: 500,
-      body: 'Internal server error'
-    };
+    return { statusCode: 500, body: 'Internal server error' };
   }
 };
