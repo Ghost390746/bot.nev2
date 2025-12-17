@@ -90,16 +90,26 @@
     const sendBtn = document.getElementById('sendBtn');
     const output = document.getElementById('output');
 
+    // Function to get session token from cookie
+    function getSessionToken() {
+      const match = document.cookie.match(/session_token=([^;]+)/);
+      return match ? match[1] : null;
+    }
+
     // Load verified users to populate recipients
     async function loadUsers() {
-      const session_token = localStorage.getItem('session_token');
-      if (!session_token) return;
+      const session_token = getSessionToken();
+      if (!session_token) {
+        toUserSelect.innerHTML = '<option value="">No session found</option>';
+        return;
+      }
 
       const res = await fetch('/.netlify/functions/getVerifiedUsers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_token })
       });
+
       const data = await res.json();
       if (!data.success) {
         toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
@@ -117,7 +127,7 @@
 
     // Send email
     sendBtn.addEventListener('click', async () => {
-      const session_token = localStorage.getItem('session_token');
+      const session_token = getSessionToken();
       const to_user = toUserSelect.value;
       const subject = subjectInput.value.trim();
       const body = bodyInput.value.trim();
