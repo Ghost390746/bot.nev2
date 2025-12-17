@@ -9,7 +9,8 @@ const supabase = createClient(
 export const handler = async (event) => {
   try {
     const host = event.headers.host; 
-    const subdomain = host.split('.')[0]; // abc.botnet2.netlify.app
+  const subdomain = host === 'fire-usa.com' ? 'www' : host.split('.')[0];
+
 
     const path = event.path === '/' ? 'index.html' : event.path.slice(1);
     const filePath = `${subdomain}/${path}`;
