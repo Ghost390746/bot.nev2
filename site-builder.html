@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>Botnet2 Site Builder</title>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.0/dist/jszip.min.js"></script>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/supabase.min.js"></script>
   <style>
     body { font-family: sans-serif; background: #111; color: white; padding: 20px; }
     input, button { padding: 10px; margin: 10px 0; width: 100%; }
@@ -14,7 +13,7 @@
 <body>
 
 <h1>Botnet2 Site Builder</h1>
-<p>Your site will live at: <strong>https://&lt;site-name&gt;.botnet2.netlify.app</strong></p>
+<p>Your site will live at: <strong>https://&lt;site-name&gt;.fire-usa.com</strong></p>
 
 <input type="text" id="siteName" placeholder="Enter site name (letters, numbers, -)" />
 <input type="file" id="zipFile" accept=".zip" />
@@ -23,14 +22,6 @@
 <iframe id="previewFrame"></iframe>
 
 <script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/supabase.min.js';
-
-  // Initialize Supabase (keys should be safe, do not push publicly)
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-  );
-
   const zipInput = document.getElementById('zipFile');
   const siteNameInput = document.getElementById('siteName');
   const createBtn = document.getElementById('createSiteBtn');
@@ -39,10 +30,12 @@
   createBtn.addEventListener('click', async () => {
     const siteName = siteNameInput.value.trim();
     const file = zipInput.files[0];
+
     if (!siteName || !file) {
       alert('Please provide site name and ZIP file.');
       return;
     }
+
     if (!/^[a-z0-9-]{3,30}$/.test(siteName)) {
       alert('Site name invalid. Only lowercase letters, numbers, and - allowed.');
       return;
@@ -50,36 +43,29 @@
 
     try {
       // 1️⃣ Register the site with create-site function
+      const formData = new FormData();
+      formData.append('site_name', siteName);
+      formData.append('zip', file);
+
       const response = await fetch('/.netlify/functions/create-site', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: 'demo-user-id', site_name: siteName })
+        body: formData
       });
+
       const data = await response.json();
       if (!data.success) {
         alert(data.error || 'Failed to create site');
         return;
       }
 
-      // 2️⃣ Extract ZIP and upload files to Supabase Storage
-      const zip = await JSZip.loadAsync(file);
-      for (const [filename, zipEntry] of Object.entries(zip.files)) {
-        if (zipEntry.dir) continue;
-        // Only allow web files
-        if (!/\.(html|css|js|png|jpg|jpeg|svg|json)$/.test(filename)) continue;
-        const content = await zipEntry.async('arraybuffer');
-        await supabase.storage
-          .from('sites')
-          .upload(`${siteName}/${filename}`, content, { upsert: true });
-      }
-
-      // 3️⃣ Preview site (serve-site function handles serving automatically)
+      // 2️⃣ Preview the site via serve-site function automatically
+      // Wildcard subdomain means the URL is now under fire-usa.com
       alert(`Site created! Visit: ${data.url}`);
       previewFrame.src = data.url;
 
     } catch (err) {
       console.error(err);
-      alert('Error creating site or uploading files.');
+      alert('Error creating site.');
     }
   });
 </script>
