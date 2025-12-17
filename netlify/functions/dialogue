@@ -1,0 +1,78 @@
+import { createClient } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+export const handler = async (event) => {
+  try {
+    const { session_token, message } = JSON.parse(event.body || '{}');
+    if (!session_token || !message) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ success: false, error: 'Missing session or message' })
+      };
+    }
+
+    // 🔐 Verify session
+    const { data: sessionData } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('session_token', session_token)
+      .single();
+
+    if (!sessionData) {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ success: false, error: 'Invalid session' })
+      };
+    }
+
+    const userEmail = sessionData.user_email;
+
+    // 🔎 Store user message
+    const userMessageId = uuidv4();
+    await supabase.from('messages').insert({
+      id: userMessageId,
+      user_email: userEmail,
+      content: message,
+      role: 'user',
+      created_at: new Date()
+    });
+
+    // 🤖 Generate bot response (example rules; can upgrade to AI later)
+    let botResponse = 'I am not sure how to respond to that.';
+    if (message.toLowerCase().includes('hello')) botResponse = 'Hello! How can I help you today?';
+    if (message.toLowerCase().includes('help')) botResponse = 'Sure! Ask me anything, and I will try to assist.';
+
+    // 🔎 Store bot response
+    const botMessageId = uuidv4();
+    await supabase.from('messages').insert({
+      id: botMessageId,
+      user_email: userEmail,
+      content: botResponse,
+      role: 'bot',
+      created_at: new Date()
+    });
+
+    // ✅ Return bot response
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        response: botResponse,
+        userMessageId,
+        botMessageId
+      })
+    };
+  } catch (err) {
+    console.error('Dialogue function error:', err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: 'Internal server error' })
+    };
+  }
+};
