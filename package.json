@@ -20,7 +20,8 @@
     "nodemailer": "^6.9.4",
     "bcrypt": "^5.1.1",
     "uuid": "^9.0.1",
-    "node-fetch": "^2.6.12"
+    "node-fetch": "^2.6.12",
+    "mime-types": "^2.1.35"  // ✅ Added for serve-site
   },
   "engines": {
     "node": ">=18"
