@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Full Site Settings — Botnev</title>
-
 <style>
 body { font-family: Arial, sans-serif; background:#f9fafc; margin:0; padding:20px; }
 h1 { text-align:center; color:#333; }
@@ -32,6 +31,7 @@ button:hover { background:#0056b3; }
 <div id="output"></div>
 
 <script>
+// Load user data from backend (reads HttpOnly cookie automatically)
 async function loadUser() {
   try {
     const res = await fetch('/.netlify/functions/getUser', {
@@ -39,13 +39,11 @@ async function loadUser() {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include' // ✅ sends HttpOnly cookie
     });
-
     const data = await res.json();
     if (!data.success) {
       document.getElementById('output').textContent = data.error;
       return;
     }
-
     renderForm(data.user);
   } catch (err) {
     console.error(err);
@@ -53,6 +51,7 @@ async function loadUser() {
   }
 }
 
+// Render form fields
 function renderForm(user) {
   const container = document.getElementById('formContainer');
   container.innerHTML = '';
@@ -101,17 +100,15 @@ function renderForm(user) {
   });
 }
 
+// Save updated profile
 document.getElementById('saveBtn').addEventListener('click', async () => {
   try {
     const updates = {};
-
     document.querySelectorAll('#formContainer .form-group').forEach(group => {
       const input = group.querySelector('input, select');
       if (!input) return;
-
       let val = input.value;
       const key = input.id.replace('field_', '');
-
       if (input.tagName === 'SELECT') val = val === 'true';
       if (val !== '' || key === 'password') updates[key] = val;
     });
@@ -119,7 +116,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     const res = await fetch('/.netlify/functions/updateFullProfile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // ✅ REQUIRED
+      credentials: 'include', // ✅ HttpOnly cookie sent automatically
       body: JSON.stringify({ updates })
     });
 
@@ -133,6 +130,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   }
 });
 
+// Load user on page load
 loadUser();
 </script>
 
