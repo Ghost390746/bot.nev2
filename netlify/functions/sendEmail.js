@@ -130,7 +130,7 @@ export const handler = async (event) => {
       statusCode: 200,
       headers: {
         ...headers,
-        'Set-Cookie': `session_token=${newSessionToken}; Path=/; HttpOnly; Secure; SameSite=Strict`,
+        'Set-Cookie': `session_token=${newSessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax`
       },
       body: JSON.stringify({ success: true, message: 'Message sent successfully' })
     };
