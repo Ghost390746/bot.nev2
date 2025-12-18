@@ -2,58 +2,43 @@
 import { createClient } from '@supabase/supabase-js';
 import cookie from 'cookie';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 export const handler = async (event) => {
   try {
-    // Parse cookies
+    // 🍪 Read session token from cookie
     const cookies = cookie.parse(event.headers.cookie || '');
-    const session_token = cookies.session_token;
+    const session_token = cookies.ion_token; // <-- must match your cookie
 
     if (!session_token) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ success: false, error: 'Missing session token' })
-      };
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
-    // Verify session
-    const { data: sessionData } = await supabase
+    // 🔐 Verify session
+    const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
-      .select('*')
+      .select('user_email')
       .eq('session_token', session_token)
       .single();
 
-    if (!sessionData) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ success: false, error: 'Invalid session' })
-      };
+    if (sessionError || !sessionData) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
     }
 
-    // Get all verified users (excluding self)
-    const { data: users, error } = await supabase
+    // ✅ Get all verified users excluding self
+    const { data: users, error: usersError } = await supabase
       .from('users')
       .select('email')
       .eq('verified', true)
       .neq('email', sessionData.user_email)
       .order('email', { ascending: true });
 
-    if (error) throw error;
+    if (usersError) throw usersError;
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true, users })
-    };
+    return { statusCode: 200, body: JSON.stringify({ success: true, users }) };
 
   } catch (err) {
     console.error('getVerifiedUsers error:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ success: false, error: 'Internal server error' })
-    };
+    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }) };
   }
 };
