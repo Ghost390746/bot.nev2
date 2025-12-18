@@ -1,21 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';
+import nodemailer from 'nodemailer';
+import cookie from 'cookie';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
 
 export const handler = async (event) => {
   try {
-    const { session_token } = JSON.parse(event.body || '{}');
+    // Get session token from cookie
+    const cookies = cookie.parse(event.headers.cookie || '');
+    const session_token = cookies.session_token;
     if (!session_token) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing session token' }) };
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
-    // 🔐 Verify session and get user email
+    // Verify session
     const { data: sessionData } = await supabase
       .from('sessions')
-      .select('*')
+      .select('user_email')
       .eq('session_token', session_token)
       .single();
 
@@ -23,24 +33,36 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
     }
 
-    const user_email = sessionData.user_email;
+    const from_user = sessionData.user_email;
 
-    // ✅ Fetch all emails to this user
-    const { data: emails, error } = await supabase
-      .from('emails')
-      .select('*')
-      .eq('to_user', user_email)
-      .order('created_at', { ascending: false });
+    // Parse email details
+    const { to_user, subject, body } = JSON.parse(event.body || '{}');
+    if (!to_user || !body) {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing required fields' }) };
+    }
 
-    if (error) throw error;
+    // Insert email into DB
+    await supabase.from('emails').insert({
+      id: uuidv4(),
+      from_user,
+      to_user,
+      subject: subject || '',
+      body
+    });
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true, emails })
-    };
+    // Send real email
+    await transporter.sendMail({
+      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
+      to: to_user,
+      replyTo: from_user,
+      subject: subject || 'New message',
+      text: body
+    });
+
+    return { statusCode: 200, body: JSON.stringify({ success: true, message: 'Email sent successfully' }) };
 
   } catch (err) {
-    console.error('getEmails error:', err);
+    console.error('sendEmail error:', err);
     return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
   }
 };
