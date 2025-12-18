@@ -1,11 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { v4 as uuidv4 } from 'uuid';
+import cookie from 'cookie';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 const transporter =
   process.env.EMAIL_USER && process.env.EMAIL_PASS
@@ -14,78 +12,84 @@ const transporter =
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS
-        }
+        },
+        secure: true // enforce TLS
       })
     : null;
+
+// Rate limiting config
+const RATE_LIMIT_COUNT = 10; // messages
+const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour
 
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: JSON.stringify({ success: false }) };
+      return { statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
     }
 
-    const { session_token, to_user, subject, body } =
-      JSON.parse(event.body || '{}');
-
-    if (!session_token || !to_user || !body) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ success: false, error: 'Missing fields' })
-      };
+    // ✅ CSRF protection (check custom header)
+    const csrfToken = event.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== process.env.CSRF_TOKEN) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'CSRF check failed' }) };
     }
 
-    if (body.length > 5000) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ success: false, error: 'Message too long' })
-      };
+    // ✅ Read secure session cookie
+    const cookies = cookie.parse(event.headers.cookie || '');
+    const session_token = cookies.session_token;
+    if (!session_token) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'No session cookie found' }) };
     }
 
-    // 🔐 Verify session
-    const { data: session } = await supabase
+    const { to_user, subject, body } = JSON.parse(event.body || '{}');
+
+    // ✅ Input validation
+    if (!to_user || !body) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing fields' }) };
+    if (typeof to_user !== 'string' || typeof body !== 'string') return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid field types' }) };
+    if (body.length > 5000) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Message too long' }) };
+    if (subject && subject.length > 255) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Subject too long' }) };
+
+    // 🔐 Verify session and expiration
+    const { data: session, error: sessionError } = await supabase
       .from('sessions')
-      .select('user_email')
+      .select('user_email, expires_at')
       .eq('session_token', session_token)
-      .single();
+      .maybeSingle();
 
-    if (!session) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ success: false, error: 'Invalid session' })
-      };
-    }
+    if (sessionError || !session) return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
+    if (new Date(session.expires_at) < new Date()) return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Session expired' }) };
 
     const from_user = session.user_email;
 
-    // ✅ Verify sender
+    // ✅ Rate limiting per user
+    const { data: recentMessages } = await supabase
+      .from('emails')
+      .select('id')
+      .eq('from_user', from_user)
+      .gte('created_at', new Date(Date.now() - RATE_LIMIT_WINDOW));
+
+    if (recentMessages?.length >= RATE_LIMIT_COUNT) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Rate limit exceeded. Try later.' }) };
+    }
+
+    // ✅ Verify sender is verified
     const { data: sender } = await supabase
       .from('users')
       .select('email, verified')
       .eq('email', from_user)
       .eq('verified', true)
-      .single();
+      .maybeSingle();
 
-    if (!sender) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ success: false, error: 'Sender not verified' })
-      };
-    }
+    if (!sender) return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified' }) };
 
-    // ✅ Verify recipient
+    // ✅ Verify recipient is verified
     const { data: recipient } = await supabase
       .from('users')
       .select('email, verified')
       .eq('email', to_user)
       .eq('verified', true)
-      .single();
+      .maybeSingle();
 
-    if (!recipient) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ success: false, error: 'Recipient not found' })
-      };
-    }
+    if (!recipient) return { statusCode: 404, body: JSON.stringify({ success: false, error: 'Recipient not found' }) };
 
     // 📨 Store internal message
     await supabase.from('emails').insert({
@@ -96,7 +100,7 @@ export const handler = async (event) => {
       body
     });
 
-    // ✉️ Send real email
+    // ✉️ Send email
     if (transporter) {
       await transporter.sendMail({
         from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
@@ -105,20 +109,17 @@ export const handler = async (event) => {
         subject: subject || `New message from ${from_user}`,
         text: body
       });
+    } else {
+      console.log(`Transporter not configured. Message to ${to_user}:`, body);
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        message: 'Message sent successfully'
-      })
-    };
+    // ✅ Logging
+    console.log(`Message sent from ${from_user} to ${to_user} at ${new Date().toISOString()}`);
+
+    return { statusCode: 200, body: JSON.stringify({ success: true, message: 'Message sent successfully' }) };
+
   } catch (err) {
     console.error('sendEmail error:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ success: false, error: 'Server error' })
-    };
+    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Server error', details: err.message }) };
   }
 };
