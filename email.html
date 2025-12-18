@@ -25,55 +25,21 @@
       max-width: 700px;
       margin: auto;
     }
-    label {
-      display: block;
-      margin: 10px 0 5px;
-      font-weight: bold;
-    }
+    label { display: block; margin: 10px 0 5px; font-weight: bold; }
     select, input, textarea {
-      width: 100%;
-      padding: 8px;
-      background-color: #111;
-      border: 1px solid #00ff00;
-      color: #00ff00;
-      font-family: monospace;
+      width: 100%; padding: 8px; background-color: #111;
+      border: 1px solid #00ff00; color: #00ff00; font-family: monospace;
     }
-    textarea {
-      height: 150px;
-      resize: vertical;
-    }
+    textarea { height: 150px; resize: vertical; }
     button {
-      margin-top: 15px;
-      padding: 10px 20px;
-      background-color: #ff0000;
-      color: #000;
-      border: none;
-      cursor: pointer;
-      font-weight: bold;
-      transition: 0.2s;
+      margin-top: 15px; padding: 10px 20px; background-color: #ff0000;
+      color: #000; border: none; cursor: pointer; font-weight: bold; transition: 0.2s;
     }
-    button:hover {
-      background-color: #aa0000;
-    }
-    #output {
-      margin-top: 20px;
-      padding: 10px;
-      border: 1px solid #00ff00;
-      min-height: 20px;
-      white-space: pre-wrap;
-    }
-    #inbox {
-      margin-top: 30px;
-    }
-    .email {
-      border: 1px solid #00ff00;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-    .email strong {
-      display: inline-block;
-      width: 80px;
-    }
+    button:hover { background-color: #aa0000; }
+    #output { margin-top: 20px; padding: 10px; border: 1px solid #00ff00; min-height: 20px; white-space: pre-wrap; }
+    #inbox { margin-top: 30px; }
+    .email { border: 1px solid #00ff00; padding: 10px; margin-bottom: 10px; }
+    .email strong { display: inline-block; width: 80px; }
   </style>
 </head>
 <body>
@@ -82,9 +48,7 @@
 
 <main>
   <label for="toUser">Send To:</label>
-  <select id="toUser">
-    <option value="">Loading users...</option>
-  </select>
+  <select id="toUser"><option value="">Loading users...</option></select>
 
   <label for="subject">Subject:</label>
   <input type="text" id="subject" maxlength="200">
@@ -100,17 +64,11 @@
 </main>
 
 <script>
-const toUserSelect = document.getElementById('toUser');
-const subjectInput = document.getElementById('subject');
-const bodyInput = document.getElementById('body');
-const sendBtn = document.getElementById('sendBtn');
-const output = document.getElementById('output');
-const inboxDiv = document.getElementById('inbox');
-
 // --------------------
 // Sanitize input to prevent HTML/script injection
 // --------------------
 function sanitize(str) {
+  if (!str) return '';
   return str.replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;');
 }
 
@@ -122,13 +80,10 @@ async function loadUsers() {
     const res = await fetch('/.netlify/functions/getVerifiedUsers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include' // send cookies
+      credentials: 'include'
     });
     const data = await res.json();
-    if (!data.success) {
-      toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
-      return;
-    }
+    if (!data.success) throw new Error('Failed to load users');
 
     toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
     data.users.forEach(u => {
@@ -138,7 +93,7 @@ async function loadUsers() {
       toUserSelect.appendChild(opt);
     });
   } catch (err) {
-    console.error('Failed to load users:', err);
+    console.error(err);
     toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
   }
 }
@@ -156,7 +111,6 @@ sendBtn.addEventListener('click', async () => {
     return;
   }
 
-  // Sanitize inputs
   const safeSubject = sanitize(subject) || 'New message';
   const safeBody = sanitize(body);
 
@@ -170,14 +124,12 @@ sendBtn.addEventListener('click', async () => {
 
     const data = await res.json();
     if (data.success) {
-      output.textContent = 'Email sent.';
+      output.textContent = 'Email sent successfully.';
       subjectInput.value = '';
       bodyInput.value = '';
       loadInbox();
-    } else if (data.error && data.error.includes('Rate limit exceeded')) {
-      output.textContent = 'Too many emails sent! Wait a minute and try again.';
     } else {
-      output.textContent = 'Error: ' + data.error;
+      output.textContent = 'Error: ' + (data.error || 'Unknown error');
     }
   } catch (err) {
     console.error('Send email failed:', err);
@@ -227,6 +179,13 @@ async function loadInbox() {
 // --------------------
 // Initialize
 // --------------------
+const toUserSelect = document.getElementById('toUser');
+const subjectInput = document.getElementById('subject');
+const bodyInput = document.getElementById('body');
+const sendBtn = document.getElementById('sendBtn');
+const output = document.getElementById('output');
+const inboxDiv = document.getElementById('inbox');
+
 loadUsers();
 loadInbox();
 </script>
