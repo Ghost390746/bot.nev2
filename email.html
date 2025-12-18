@@ -107,30 +107,45 @@ const sendBtn = document.getElementById('sendBtn');
 const output = document.getElementById('output');
 const inboxDiv = document.getElementById('inbox');
 
-// Load verified users
-async function loadUsers() {
-  const res = await fetch('/.netlify/functions/getVerifiedUsers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include' // ✅ send cookies
-  });
-
-  const data = await res.json();
-  if (!data.success) {
-    toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
-    return;
-  }
-
-  toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
-  data.users.forEach(u => {
-    const opt = document.createElement('option');
-    opt.value = u.email;
-    opt.textContent = u.email;
-    toUserSelect.appendChild(opt);
-  });
+// --------------------
+// Sanitize input to prevent HTML/script injection
+// --------------------
+function sanitize(str) {
+  return str.replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;');
 }
 
+// --------------------
+// Load verified users
+// --------------------
+async function loadUsers() {
+  try {
+    const res = await fetch('/.netlify/functions/getVerifiedUsers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include' // send cookies
+    });
+    const data = await res.json();
+    if (!data.success) {
+      toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
+      return;
+    }
+
+    toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
+    data.users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.email;
+      opt.textContent = u.email;
+      toUserSelect.appendChild(opt);
+    });
+  } catch (err) {
+    console.error('Failed to load users:', err);
+    toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
+  }
+}
+
+// --------------------
 // Send email
+// --------------------
 sendBtn.addEventListener('click', async () => {
   const to_user = toUserSelect.value;
   const subject = subjectInput.value.trim();
@@ -141,57 +156,77 @@ sendBtn.addEventListener('click', async () => {
     return;
   }
 
-  const res = await fetch('/.netlify/functions/sendEmail', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // ✅ send cookies
-    body: JSON.stringify({ to_user, subject, body })
-  });
+  // Sanitize inputs
+  const safeSubject = sanitize(subject) || 'New message';
+  const safeBody = sanitize(body);
 
-  const data = await res.json();
-  if (data.success) {
-    output.textContent = 'Email sent.';
-    subjectInput.value = '';
-    bodyInput.value = '';
-    loadInbox();
-  } else {
-    output.textContent = 'Error: ' + data.error;
+  try {
+    const res = await fetch('/.netlify/functions/sendEmail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ to_user, subject: safeSubject, body: safeBody })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      output.textContent = 'Email sent.';
+      subjectInput.value = '';
+      bodyInput.value = '';
+      loadInbox();
+    } else if (data.error && data.error.includes('Rate limit exceeded')) {
+      output.textContent = 'Too many emails sent! Wait a minute and try again.';
+    } else {
+      output.textContent = 'Error: ' + data.error;
+    }
+  } catch (err) {
+    console.error('Send email failed:', err);
+    output.textContent = 'Failed to send email.';
   }
 });
 
+// --------------------
 // Load inbox
+// --------------------
 async function loadInbox() {
-  const res = await fetch('/.netlify/functions/getEmails', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include' // ✅ send cookies
-  });
+  try {
+    const res = await fetch('/.netlify/functions/getEmails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!data.success) {
+      inboxDiv.textContent = 'Failed to load inbox';
+      return;
+    }
 
-  const data = await res.json();
-  if (!data.success) {
+    if (!data.emails.length) {
+      inboxDiv.textContent = 'No emails';
+      return;
+    }
+
+    inboxDiv.innerHTML = '';
+    data.emails.forEach(e => {
+      const div = document.createElement('div');
+      div.className = 'email';
+      div.innerHTML = `
+        <div><strong>From:</strong> ${sanitize(e.from_user)}</div>
+        <div><strong>Subject:</strong> ${sanitize(e.subject) || '(none)'}</div>
+        <div><strong>Date:</strong> ${new Date(e.created_at).toLocaleString()}</div>
+        <div>${sanitize(e.body)}</div>
+      `;
+      inboxDiv.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Failed to load inbox:', err);
     inboxDiv.textContent = 'Failed to load inbox';
-    return;
   }
-
-  if (!data.emails.length) {
-    inboxDiv.textContent = 'No emails';
-    return;
-  }
-
-  inboxDiv.innerHTML = '';
-  data.emails.forEach(e => {
-    const div = document.createElement('div');
-    div.className = 'email';
-    div.innerHTML = `
-      <div><strong>From:</strong> ${e.from_user}</div>
-      <div><strong>Subject:</strong> ${e.subject || '(none)'}</div>
-      <div><strong>Date:</strong> ${new Date(e.created_at).toLocaleString()}</div>
-      <div>${e.body}</div>
-    `;
-    inboxDiv.appendChild(div);
-  });
 }
 
+// --------------------
+// Initialize
+// --------------------
 loadUsers();
 loadInbox();
 </script>
