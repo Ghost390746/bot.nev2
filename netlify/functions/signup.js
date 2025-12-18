@@ -1,87 +1,117 @@
 import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
+import { checkRateLimit, logAttempt } from './rateLimit.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// Password validation
-function validatePassword(password) {
-  if (password.length < 30) return false;
-  if (!/[A-Z]/.test(password[0])) return false;
-  if (!/[0-9]/.test(password.slice(-1))) return false;
-  if ((password.match(/[^A-Za-z0-9]/g) || []).length < 2) return false;
-  return true;
+// Inline CAPTCHA verification
+async function verifyCaptcha(token, ip) {
+  if (!token) return false;
+  const secret = process.env.CAPTCHA_SECRET_KEY;
+  const res = await fetch('https://hcaptcha.com/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `secret=${secret}&response=${token}&remoteip=${ip}`
+  });
+  const data = await res.json();
+  return data.success === true;
+}
+
+// Device fingerprint hash
+function getDeviceFingerprint(headers) {
+  return crypto.createHash('sha256')
+    .update(headers['user-agent'] + headers['accept-language'] + headers['x-forwarded-for'])
+    .digest('hex');
+}
+
+// Random uniform delay (0.5–1.5s)
+async function randomDelay() {
+  const delay = 500 + Math.random() * 1000;
+  return new Promise(res => setTimeout(res, delay));
+}
+
+// Optional: generate encrypted session token
+function generateEncryptedToken() {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(
+    'aes-256-gcm',
+    crypto.scryptSync(process.env.SESSION_SECRET, 'salt', 32),
+    iv
+  );
+  const token = cipher.update(uuidv4(), 'utf8', 'hex') + cipher.final('hex');
+  return token;
 }
 
 export const handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
+    const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
+    const fingerprint = getDeviceFingerprint(event.headers);
+
+    const { email, password, remember_me, captcha_token, google } = JSON.parse(event.body);
+
+    if (google) {
+      return { statusCode: 200, body: JSON.stringify({ success: true, redirect: '/.netlify/functions/googleStart' }) };
     }
 
-    const { email, username, password } = JSON.parse(event.body || '{}');
+    // Adaptive rate limit per IP + email
+    const allowed = await checkRateLimit(ip + email);
+    if (!allowed) return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
 
-    if (!email || !password) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Email and password required.' }) };
+    // CAPTCHA verification
+    const captchaValid = await verifyCaptcha(captcha_token, ip);
+    if (!captchaValid) {
+      await logAttempt(ip + email);
+      await randomDelay();
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'CAPTCHA verification failed' }) };
     }
 
-    // Check if email exists
-    const { data: existing } = await supabase
-      .from('users')
-      .select('email')
-      .eq('email', email)
-      .maybeSingle();
+    // Fetch user
+    const { data: user } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
 
-    if (existing) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Email already registered.' }) };
+    // Dummy bcrypt compare for timing attack prevention
+    const dummyHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO';
+    const passwordMatch = user ? await bcrypt.compare(password, user.password) : await bcrypt.compare(password, dummyHash);
+
+    // Check verification, password, device fingerprint, honeytokens, IP risk, etc.
+    if (
+      !user ||
+      !passwordMatch ||
+      !user.verified ||
+      (user.last_fingerprint && user.last_fingerprint !== fingerprint) ||
+      user.is_honeytoken // alert for decoy account login attempt
+    ) {
+      await logAttempt(ip + email);
+      await randomDelay();
+      // Optional: trigger email/2FA alert for suspicious activity
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid email or password or device' }) };
     }
 
-    // Validate password
-    if (!validatePassword(password)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Password does not meet requirements.' }) };
-    }
+    // Generate encrypted session token
+    const session_token = generateEncryptedToken();
+    const expiresInDays = remember_me ? 90 : 1;
 
-    // Hash password
-    const hashed = await bcrypt.hash(password, 10);
-    const verificationCode = uuidv4().split('-')[0];
-    const finalUsername = (username || email.split('@')[0]).trim();
+    await supabase.from('sessions').insert({
+      user_email: email,
+      session_token,
+      expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+    });
 
-    // Insert user
-    const { error: insertError } = await supabase
-      .from('users')
-      .insert({
-        email,
-        username: finalUsername,
-        password: hashed,
-        verified: false,
-        verification_code: verificationCode
-      });
+    // Update last fingerprint
+    await supabase.from('users').update({ last_fingerprint: fingerprint }).eq('email', email);
 
-    if (insertError) throw insertError;
-
-    // Always send email if secrets exist
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn("EMAIL_USER or EMAIL_PASS missing. Code logged instead:");
-      console.log(`Verification code for ${email}: ${verificationCode}`);
-    } else {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-      });
-
-      await transporter.sendMail({
-        from: `"Botnev Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Your Botnev Verification Code",
-        text: `Hello ${finalUsername},\n\nYour verification code is: ${verificationCode}\nUse this code to verify your account.`
-      });
-    }
-
-    return { statusCode: 200, body: JSON.stringify({ success: true, message: 'Signup successful! Verification code sent.' }) };
+    return {
+      statusCode: 200,
+      headers: {
+        'Set-Cookie': `session_token=${session_token}; Path=/; HttpOnly; Secure; Max-Age=${expiresInDays*24*60*60}; SameSite=Strict`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ success: true, message: 'Login successful!' })
+    };
 
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Failed to signup.', details: err.message }) };
+    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
   }
 };
