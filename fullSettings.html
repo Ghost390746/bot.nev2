@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Full Site Settings — Botnev</title>
+<title>Full Profile Settings — Botnev</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f9fafc; margin:0; padding:20px; }
 h1 { text-align:center; color:#333; }
@@ -31,14 +31,15 @@ button:hover { background:#0056b3; }
 <div id="output"></div>
 
 <script>
-// Load user data from backend (reads HttpOnly cookie automatically)
+// Load user data from backend (HttpOnly cookie handled automatically)
 async function loadUser() {
   try {
     const res = await fetch('/.netlify/functions/getUser', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include' // ✅ sends HttpOnly cookie
+      credentials: 'include' // ✅ HttpOnly cookie sent automatically
     });
+
     const data = await res.json();
     if (!data.success) {
       document.getElementById('output').textContent = data.error;
@@ -51,12 +52,12 @@ async function loadUser() {
   }
 }
 
-// Render form fields
+// Render form fields dynamically
 function renderForm(user) {
   const container = document.getElementById('formContainer');
   container.innerHTML = '';
 
-  const allowedFields = [
+  const fields = [
     'username',
     'display_name',
     'bio',
@@ -65,7 +66,7 @@ function renderForm(user) {
     'email_notification'
   ];
 
-  allowedFields.forEach(key => {
+  fields.forEach(key => {
     const value = user[key] ?? '';
     const group = document.createElement('div');
     group.className = 'form-group';
@@ -80,7 +81,7 @@ function renderForm(user) {
       input.placeholder = 'Leave blank to keep current';
     } else if (typeof value === 'boolean') {
       input = document.createElement('select');
-      ['true','false'].forEach(v => {
+      ['true', 'false'].forEach(v => {
         const opt = document.createElement('option');
         opt.value = v;
         opt.text = v;
