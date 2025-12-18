@@ -2,21 +2,21 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import cookie from 'cookie';
-import rateLimit from 'lambda-rate-limiter';
 
+// Initialize Supabase with service role key for secure server-side access
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-// Rate limiter: 5 emails per user per minute
-const limiter = rateLimit({ interval: 60 * 1000, max: 5 });
 
 // Nodemailer with forced TLS and app password
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
   secure: true, // force TLS
 });
 
-// Sanitize inputs to prevent HTML & header injection
+// Basic sanitization to prevent HTML/script injection
 const sanitize = (str) => {
   if (!str) return '';
   return str
@@ -24,19 +24,23 @@ const sanitize = (str) => {
     .replace(/(\r|\n)/g, ''); // prevent header injection
 };
 
+// Simple regex to validate emails
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
       return { statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
     }
 
+    // Parse secure session cookie
     const cookies = cookie.parse(event.headers.cookie || '');
-    const session_token = cookies['__Host-session_secure']; // enforce secure cookie
-
+    const session_token = cookies['__Host-session_secure'];
     if (!session_token) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
+    // Verify sender session
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email, expires_at')
@@ -53,54 +57,78 @@ export const handler = async (event) => {
 
     const from_user = sessionData.user_email;
 
-    // Parse input
-    const { to_user, subject, body } = JSON.parse(event.body || '{}');
+    // Verify sender exists & is verified
+    const { data: senderData, error: senderError } = await supabase
+      .from('users')
+      .select('email, username, verified')
+      .eq('email', from_user)
+      .single();
+
+    if (senderError || !senderData || !senderData.verified) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified or invalid' }) };
+    }
+
+    // Parse request body
+    let payload;
+    try {
+      payload = JSON.parse(event.body || '{}');
+    } catch {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) };
+    }
+
+    let { to_user, subject, body } = payload;
 
     if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200)) {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input or length exceeded' }) };
     }
 
-    const safeSubject = sanitize(subject || 'New message');
-    const safeBody = sanitize(body);
+    // Sanitize inputs
+    subject = sanitize(subject || 'New message');
+    body = sanitize(body);
 
-    // ✅ Rate limit
-    await limiter.check(from_user, 1);
+    // Validate recipient email format
+    if (!isValidEmail(to_user)) {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Recipient email is invalid' }) };
+    }
 
-    // ✅ Verify recipient exists & is verified
-    const { data: recipient, error: recipientError } = await supabase
+    // Verify recipient exists & is verified
+    const { data: recipientData, error: recipientError } = await supabase
       .from('users')
-      .select('email, verified')
+      .select('email, username, verified')
       .eq('email', to_user)
       .single();
 
-    if (recipientError || !recipient || !recipient.verified) {
+    if (recipientError || !recipientData || !recipientData.verified) {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient not verified or does not exist' }) };
     }
 
-    // Insert email in DB
+    // Insert email into DB
     await supabase.from('emails').insert({
       id: uuidv4(),
       from_user,
       to_user,
-      subject: safeSubject,
-      body: safeBody,
+      subject,
+      body,
       created_at: new Date().toISOString(),
     });
 
-    // Send email via secure transporter
+    // Send actual email with proper sender info
     await transporter.sendMail({
-      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
-      to: to_user,
-      replyTo: from_user,
-      subject: safeSubject,
-      text: safeBody,
+      from: `"${senderData.username}" <${senderData.email}>`,
+      to: recipientData.email,
+      replyTo: senderData.email,
+      subject,
+      text: body,
     });
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, message: 'Email sent successfully' }) };
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        message: `Email sent successfully from ${senderData.username} (${senderData.email}) to ${recipientData.username || recipientData.email}`,
+      }),
+    };
   } catch (err) {
-    if (err.message?.includes('Too Many Requests')) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Rate limit exceeded' }) };
-    }
     console.error('sendEmail error:', err);
     return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
   }
