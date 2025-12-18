@@ -1,24 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
 import cookie from 'cookie';
 
-// Use the service role key for secure backend access
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// Service role key for secure backend access
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export const handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
+    if (event.httpMethod !== 'POST') {
+      return {
+        statusCode: 405,
+        body: JSON.stringify({ success: false, error: 'Method not allowed' })
+      };
     }
 
-    // Read session token from cookie
+    // ✅ Safely parse cookies (Netlify-compatible)
     const cookies = cookie.parse(event.headers.cookie || '');
     const session_token = cookies.session_token;
 
     if (!session_token) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: "No session cookie found" }) };
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ success: false, error: 'Not authenticated' })
+      };
     }
 
-    // Verify session
+    // ✅ Verify session
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email, expires_at')
@@ -26,31 +35,48 @@ export const handler = async (event) => {
       .maybeSingle();
 
     if (sessionError || !session) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: "Invalid session" }) };
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ success: false, error: 'Invalid session' })
+      };
     }
 
     if (new Date(session.expires_at) < new Date()) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: "Session expired" }) };
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ success: false, error: 'Session expired' })
+      };
     }
 
-    // Fetch user by session email
-    const { data: user, error } = await supabase
+    // ✅ Fetch user
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('email', session.user_email)
       .maybeSingle();
 
-    if (error) throw error;
-    if (!user) return { statusCode: 404, body: JSON.stringify({ success: false, error: "User not found" }) };
+    if (userError || !user) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ success: false, error: 'User not found' })
+      };
+    }
 
-    // Remove sensitive fields before returning
+    // ✅ Sanitize output
     const safeUser = { ...user };
     delete safeUser.password;
+    delete safeUser.encrypted_password;
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, user: safeUser }) };
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: true, user: safeUser })
+    };
 
   } catch (err) {
     console.error('getUser error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: "Failed to fetch user", details: err.message }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: 'Failed to fetch user' })
+    };
   }
 };
