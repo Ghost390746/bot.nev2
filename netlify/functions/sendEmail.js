@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import cookie from 'cookie';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -24,9 +25,15 @@ const DUPLICATE_WINDOW = 5 * 60 * 1000; // 5 minutes
 
 export const handler = async (event) => {
   try {
-    const { session_token, to_user, subject, body } = JSON.parse(event.body || '{}');
+    // Parse cookies to get session_token
+    const cookies = cookie.parse(event.headers.cookie || '');
+    const session_token = cookies.session_token;
+    if (!session_token) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'No session cookie found' }) };
+    }
 
-    if (!session_token || !to_user || !body) {
+    const { to_user, subject, body } = JSON.parse(event.body || '{}');
+    if (!to_user || !body) {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing required fields' }) };
     }
 
@@ -47,14 +54,14 @@ export const handler = async (event) => {
 
     const from_user = session.user_email;
 
-    // Device fingerprint
+    // Device fingerprint check
     const fingerprintSource = event.headers['user-agent'] + (event.headers['x-forwarded-for'] || '');
     const currentFingerprint = crypto.createHash('sha256').update(fingerprintSource).digest('hex');
     if (session.last_fingerprint && session.last_fingerprint !== currentFingerprint) {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Device mismatch' }) };
     }
 
-    // Rate limit check
+    // Rate limit
     const { data: recentMessages } = await supabase
       .from('emails')
       .select('id, body, created_at')
@@ -65,7 +72,7 @@ export const handler = async (event) => {
       return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Rate limit exceeded' }) };
     }
 
-    // Prevent duplicate messages within DUPLICATE_WINDOW
+    // Prevent duplicate messages
     const duplicate = recentMessages?.find(
       m => new Date() - new Date(m.created_at) < DUPLICATE_WINDOW && m.body === body
     );
@@ -111,7 +118,7 @@ export const handler = async (event) => {
       });
     }
 
-    // Update session fingerprint to prevent token misuse
+    // Update session fingerprint to prevent misuse
     await supabase
       .from('sessions')
       .update({ last_fingerprint: currentFingerprint })
