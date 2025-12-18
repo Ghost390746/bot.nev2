@@ -18,7 +18,8 @@ a:hover { background:#0056b3; }
 <h1>Signup for Botnev</h1>
 
 <input type="email" id="email" placeholder="Email" required />
-<input type="password" id="password" placeholder="Password" required />
+<input type="password" id="password" placeholder="Password (min 30 chars, uppercase first, number last, 2+ symbols)" required />
+<div class="h-captcha" data-sitekey="2b1cc900-c846-40e8-bf32-dbeeeec2d1c0"></div>
 <a href="#" id="signupBtn">🎞️ Signup</a>
 
 <div id="output"></div>
@@ -32,9 +33,15 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
   const username = email.split('@')[0];
+  const captcha_token = hcaptcha.getResponse();
 
   if(!email || !password) {
     output.textContent = "Enter email and password.";
+    return;
+  }
+
+  if(!captcha_token) {
+    output.textContent = "Complete the CAPTCHA.";
     return;
   }
 
@@ -42,11 +49,14 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
     const res = await fetch('/.netlify/functions/signup', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ email, username, password })
+      body:JSON.stringify({ email, username, password, captcha_token })
     });
 
     const data = await res.json();
-    if(!data.success) { output.textContent = `Error: ${data.error}`; return; }
+    if(!data.success) { 
+      output.textContent = `Error: ${data.error}`;
+      return; 
+    }
 
     output.innerHTML = `
       Verification code sent! Check your email.<br>
@@ -79,5 +89,6 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
   }
 });
 </script>
+<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 </body>
 </html>
