@@ -1,3 +1,4 @@
+// netlify/functions/sendEmail.js
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
@@ -5,6 +6,7 @@ import cookie from 'cookie';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// Email transporter (real email sending)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -15,21 +17,22 @@ const transporter = nodemailer.createTransport({
 
 export const handler = async (event) => {
   try {
-    // Get session token from cookie
+    // 🍪 Read session token from cookie (your actual cookie name)
     const cookies = cookie.parse(event.headers.cookie || '');
-    const session_token = cookies.session_token;
+    const session_token = cookies.ion_token; // <-- update if your cookie name differs
+
     if (!session_token) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
-    // Verify session
-    const { data: sessionData } = await supabase
+    // 🔐 Verify session
+    const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email')
       .eq('session_token', session_token)
       .single();
 
-    if (!sessionData) {
+    if (sessionError || !sessionData) {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
     }
 
@@ -63,6 +66,6 @@ export const handler = async (event) => {
 
   } catch (err) {
     console.error('sendEmail error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
+    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }) };
   }
 };
