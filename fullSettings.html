@@ -4,12 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Full Site Settings — Botnev</title>
+
 <style>
 body { font-family: Arial, sans-serif; background:#f9fafc; margin:0; padding:20px; }
 h1 { text-align:center; color:#333; }
 .form-group { margin-bottom:10px; }
 label { display:block; font-weight:bold; margin-bottom:5px; }
-input, textarea, select, button { width:100%; max-width:500px; padding:10px; margin-bottom:10px; border-radius:5px; border:1px solid #ccc; }
+input, textarea, select, button {
+  width:100%;
+  max-width:500px;
+  padding:10px;
+  margin-bottom:10px;
+  border-radius:5px;
+  border:1px solid #ccc;
+}
 button { background:#007bff; color:white; border:none; cursor:pointer; }
 button:hover { background:#0056b3; }
 #output { margin-top:20px; font-family:monospace; }
@@ -24,26 +32,20 @@ button:hover { background:#0056b3; }
 <div id="output"></div>
 
 <script>
-async function getSessionToken() {
-  // Get session_token from cookie
-  const token = document.cookie.split('; ').find(c => c.startsWith('session_token='))?.split('=')[1];
-  if (!token) throw new Error('No session token found');
-  return token;
-}
-
 async function loadUser() {
   try {
-    const session_token = await getSessionToken();
     const res = await fetch('/.netlify/functions/getUser', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ session_token })
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include' // ✅ sends HttpOnly cookie
     });
+
     const data = await res.json();
     if (!data.success) {
       document.getElementById('output').textContent = data.error;
       return;
     }
+
     renderForm(data.user);
   } catch (err) {
     console.error(err);
@@ -55,7 +57,14 @@ function renderForm(user) {
   const container = document.getElementById('formContainer');
   container.innerHTML = '';
 
-  const allowedFields = ['username','display_name','bio','profile_picture','password','email_notification'];
+  const allowedFields = [
+    'username',
+    'display_name',
+    'bio',
+    'profile_picture',
+    'password',
+    'email_notification'
+  ];
 
   allowedFields.forEach(key => {
     const value = user[key] ?? '';
@@ -74,7 +83,9 @@ function renderForm(user) {
       input = document.createElement('select');
       ['true','false'].forEach(v => {
         const opt = document.createElement('option');
-        opt.value = v; opt.text = v; if(value.toString()===v) opt.selected=true;
+        opt.value = v;
+        opt.text = v;
+        if (value.toString() === v) opt.selected = true;
         input.appendChild(opt);
       });
     } else {
@@ -92,26 +103,31 @@ function renderForm(user) {
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
   try {
-    const session_token = await getSessionToken();
     const updates = {};
+
     document.querySelectorAll('#formContainer .form-group').forEach(group => {
       const input = group.querySelector('input, select');
       if (!input) return;
+
       let val = input.value;
-      const key = input.id.replace('field_','');
-      if (input.tagName==='SELECT') val = val==='true';
-      if(val!=='' || key==='password') updates[key] = val;
+      const key = input.id.replace('field_', '');
+
+      if (input.tagName === 'SELECT') val = val === 'true';
+      if (val !== '' || key === 'password') updates[key] = val;
     });
 
     const res = await fetch('/.netlify/functions/updateFullProfile', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ session_token, updates })
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // ✅ REQUIRED
+      body: JSON.stringify({ updates })
     });
 
     const data = await res.json();
-    document.getElementById('output').textContent = data.success ? data.message : `Error: ${data.error}`;
-  } catch(err) {
+    document.getElementById('output').textContent =
+      data.success ? data.message : `Error: ${data.error}`;
+
+  } catch (err) {
     console.error(err);
     document.getElementById('output').textContent = 'Failed to update profile.';
   }
