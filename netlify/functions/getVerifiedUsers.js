@@ -1,5 +1,6 @@
 // netlify/functions/getVerifiedUsers.js
 import { createClient } from '@supabase/supabase-js';
+import cookie from 'cookie';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,9 +9,15 @@ const supabase = createClient(
 
 export const handler = async (event) => {
   try {
-    const { session_token } = JSON.parse(event.body || '{}');
+    // Parse cookies
+    const cookies = cookie.parse(event.headers.cookie || '');
+    const session_token = cookies.session_token;
+
     if (!session_token) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing session token' }) };
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ success: false, error: 'Missing session token' })
+      };
     }
 
     // Verify session
@@ -21,7 +28,10 @@ export const handler = async (event) => {
       .single();
 
     if (!sessionData) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ success: false, error: 'Invalid session' })
+      };
     }
 
     // Get all verified users (excluding self)
@@ -41,6 +51,9 @@ export const handler = async (event) => {
 
   } catch (err) {
     console.error('getVerifiedUsers error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: 'Internal server error' })
+    };
   }
 };
