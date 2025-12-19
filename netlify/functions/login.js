@@ -1,4 +1,4 @@
-import fetch from 'node-fetch'; // <-- keep this as is
+import fetch from 'node-fetch';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,8 +32,7 @@ async function verifyCaptcha(token, ip) {
 
 // Generate device fingerprint
 function getDeviceFingerprint(headers, frontendFingerprint) {
-  const source = frontendFingerprint || 
-    headers['user-agent'] + headers['accept-language'] + headers['x-forwarded-for'] + uuidv4();
+  const source = frontendFingerprint || headers['user-agent'] + headers['accept-language'] + headers['x-forwarded-for'] + uuidv4();
   return crypto.createHash('sha256').update(source).digest('hex');
 }
 
@@ -79,18 +78,14 @@ export const handler = async (event) => {
     const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
     const { email, password, remember_me, captcha_token, google, fingerprint, verification_code } = JSON.parse(event.body);
 
-    // Google login shortcut
     if (google) {
       return { statusCode: 200, body: JSON.stringify({ success: true, redirect: '/.netlify/functions/googleStart' }) };
     }
 
-    // Rate limit check
+    // Rate limit
     const allowed = await checkRateLimit(ip + email);
-    if (!allowed) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
-    }
+    if (!allowed) return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
 
-    // Fetch user
     const { data: user } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
     const userPassword = user?.encrypted_password || user?.password || '';
     const dummyHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO';
@@ -102,14 +97,13 @@ export const handler = async (event) => {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid email or password' }) };
     }
 
-    // Password strength check
     if (!passwordStrongEnough(password)) {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Password does not meet strength requirements' }) };
     }
 
     const deviceFingerprint = getDeviceFingerprint(event.headers, fingerprint);
 
-    // Only require CAPTCHA for initial login, not verification step
+    // Only check CAPTCHA on initial login
     if (!verification_code) {
       const captchaValid = await verifyCaptcha(captcha_token, ip);
       if (!captchaValid) {
@@ -119,15 +113,17 @@ export const handler = async (event) => {
       }
     }
 
-    // ZERO TRUST: require email verification every login
+    // Require email verification every login
     if (!verification_code) {
       const code = generateVerificationCode();
-      await supabase.from('pending_verifications').upsert({
+      const { error: upsertError } = await supabase.from('pending_verifications').upsert({
         email, code, fingerprint: deviceFingerprint,
-        expires_at: new Date(Date.now() + 60 * 1000) // 1 minute
+        expires_at: new Date(Date.now() + 60 * 1000)
       }, { onConflict: ['email','fingerprint'] });
 
+      if (upsertError) throw upsertError;
       await sendVerificationEmail(email, code);
+
       return { statusCode: 200, body: JSON.stringify({ success: true, verification_required: true, message: 'Verification code sent to your email. It expires in 1 minute.' }) };
     }
 
@@ -145,27 +141,33 @@ export const handler = async (event) => {
     // Delete verification record
     await supabase.from('pending_verifications').delete().eq('email', email).eq('fingerprint', deviceFingerprint);
 
-    // Generate session
+    // Generate session and save to DB
     const session_token = generateEncryptedToken();
     const expiresInDays = remember_me ? 90 : 1;
 
-    await supabase.from('sessions').insert({
+    const { error: sessionError } = await supabase.from('sessions').insert({
       user_email: email,
       session_token,
       expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000),
       verified: true
     });
 
+    if (sessionError) {
+      console.error('Session insert failed:', sessionError);
+      return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Failed to create session', details: sessionError.message }) };
+    }
+
     await supabase.from('users').update({ last_fingerprint: deviceFingerprint }).eq('email', email);
 
     return {
       statusCode: 200,
       headers: {
-       'Set-Cookie': `__Host-session_secure=${session_token}; Path=/; HttpOnly; Secure; Max-Age=${expiresInDays*24*60*60}; SameSite=Strict`,
+        'Set-Cookie': `__Host-session_secure=${session_token}; Path=/; HttpOnly; Secure; Max-Age=${expiresInDays*24*60*60}; SameSite=Strict`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ success: true, message: 'Verification complete. Login successful!' })
     };
+
   } catch (err) {
     console.error('LOGIN ERROR:', err);
     return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }) };
