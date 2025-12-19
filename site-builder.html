@@ -17,29 +17,40 @@
 
 <input type="text" id="siteName" placeholder="Enter site name (letters, numbers, -)" />
 <input type="file" id="zipFile" accept=".zip" />
-<button id="createSiteBtn">Create Site</button>
+<button id="githubLoginBtn">Login with GitHub</button>
 <select id="repoSelect" style="display:none;">
   <option value="">Select a repo</option>
 </select>
+<button id="createSiteBtn" style="display:none;">Create Site</button>
 
 <iframe id="previewFrame"></iframe>
 
 <script type="module">
   const zipInput = document.getElementById('zipFile');
   const siteNameInput = document.getElementById('siteName');
-  const createBtn = document.getElementById('createSiteBtn');
+  const githubLoginBtn = document.getElementById('githubLoginBtn');
   const repoSelect = document.getElementById('repoSelect');
+  const createBtn = document.getElementById('createSiteBtn');
   const previewFrame = document.getElementById('previewFrame');
+
+  // Start GitHub OAuth login: backend will handle CLIENT_ID/SECRET safely
+  githubLoginBtn.addEventListener('click', () => {
+    // Redirect user to the GitHub OAuth login page
+    // Your backend (create-site function) will exchange the code securely
+  window.location.href = 'https://github.com/login/oauth/authorize?scope=repo&client_id=/.netlify/functions/create-site';
+
+  });
 
   // Extract GitHub OAuth code from URL
   const urlParams = new URLSearchParams(window.location.search);
-  const githubCode = urlParams.get('code'); // This is exchanged by create-site internally
+  const githubCode = urlParams.get('code');
 
-  if (!githubCode) {
-    alert('You must log in with GitHub first and authorize the app.');
-  } else {
-    // Show repo select (create-site will return repos)
+  if (githubCode) {
+    githubLoginBtn.style.display = 'none';
     repoSelect.style.display = 'block';
+    createBtn.style.display = 'block';
+
+    // Fetch user repos using create-site function (backend handles token exchange)
     fetch('/.netlify/functions/create-site', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +65,10 @@
           option.textContent = repo.full_name;
           repoSelect.appendChild(option);
         });
+
+        // Clean the URL after login
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
       })
       .catch(err => {
         console.error('Failed to fetch repos:', err);
@@ -80,14 +95,13 @@
       const jszip = new JSZip();
       const zipData = await jszip.loadAsync(file);
       const files = {};
-
       for (const filename of Object.keys(zipData.files)) {
         if (!zipData.files[filename].dir) {
           files[filename] = await zipData.files[filename].async('text');
         }
       }
 
-      // Call create-site function (handles GitHub OAuth and pushing internally)
+      // Call create-site function which handles token exchange & repo push
       const response = await fetch('/.netlify/functions/create-site', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,7 +115,6 @@
       });
 
       const data = await response.json();
-
       if (!data.success) {
         alert(data.error || 'Failed to create site');
         return;
