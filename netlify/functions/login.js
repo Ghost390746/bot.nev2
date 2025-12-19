@@ -30,7 +30,7 @@ async function verifyCaptcha(token, ip) {
   return data.success === true;
 }
 
-// Generate device fingerprint
+// Device fingerprint hash
 function getDeviceFingerprint(headers, frontendFingerprint) {
   const source = frontendFingerprint || headers['user-agent'] + headers['accept-language'] + headers['x-forwarded-for'] + uuidv4();
   return crypto.createHash('sha256').update(source).digest('hex');
@@ -53,7 +53,7 @@ function generateEncryptedToken() {
   return `${iv.toString('hex')}:${tag}:${encrypted}`;
 }
 
-// Send email with verification code
+// Send verification email
 async function sendVerificationEmail(email, code) {
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
@@ -63,14 +63,18 @@ async function sendVerificationEmail(email, code) {
   });
 }
 
-// Generate random 6-digit verification code
+// Generate 6-digit verification code
 function generateVerificationCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Strong password enforcement
+// Strong password check
 function passwordStrongEnough(password) {
-  return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[!@#$%^&*]/.test(password);
+  return password.length >= 8 &&
+         /[A-Z]/.test(password) &&
+         /[a-z]/.test(password) &&
+         /\d/.test(password) &&
+         /[!@#$%^&*]/.test(password);
 }
 
 export const handler = async (event) => {
@@ -78,14 +82,17 @@ export const handler = async (event) => {
     const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
     const { email, password, remember_me, captcha_token, google, fingerprint, verification_code } = JSON.parse(event.body);
 
+    // Google login shortcut
     if (google) {
       return { statusCode: 200, body: JSON.stringify({ success: true, redirect: '/.netlify/functions/googleStart' }) };
     }
 
-    // Rate limit
-    const allowed = await checkRateLimit(ip + email);
-    if (!allowed) return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
+    // Rate limit check
+    if (!(await checkRateLimit(ip + email))) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
+    }
 
+    // Fetch user
     const { data: user } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
     const userPassword = user?.encrypted_password || user?.password || '';
     const dummyHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO';
@@ -103,17 +110,16 @@ export const handler = async (event) => {
 
     const deviceFingerprint = getDeviceFingerprint(event.headers, fingerprint);
 
-    // Only check CAPTCHA on initial login
+    // CAPTCHA only on initial login
     if (!verification_code) {
-      const captchaValid = await verifyCaptcha(captcha_token, ip);
-      if (!captchaValid) {
+      if (!(await verifyCaptcha(captcha_token, ip))) {
         await logAttempt(ip + email);
         await randomDelay();
         return { statusCode: 403, body: JSON.stringify({ success: false, error: 'CAPTCHA verification failed' }) };
       }
     }
 
-    // Require email verification every login
+    // ZERO TRUST: email verification required every login
     if (!verification_code) {
       const code = generateVerificationCode();
       const { error: upsertError } = await supabase.from('pending_verifications').upsert({
@@ -123,11 +129,10 @@ export const handler = async (event) => {
 
       if (upsertError) throw upsertError;
       await sendVerificationEmail(email, code);
-
       return { statusCode: 200, body: JSON.stringify({ success: true, verification_required: true, message: 'Verification code sent to your email. It expires in 1 minute.' }) };
     }
 
-    // Verify code
+    // Verify email code
     const { data: pending } = await supabase.from('pending_verifications')
       .select('*')
       .eq('email', email)
@@ -138,10 +143,11 @@ export const handler = async (event) => {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid or expired verification code' }) };
     }
 
-    // Delete verification record
-    await supabase.from('pending_verifications').delete().eq('email', email).eq('fingerprint', deviceFingerprint);
+    await supabase.from('pending_verifications').delete()
+      .eq('email', email)
+      .eq('fingerprint', deviceFingerprint);
 
-    // Generate session and save to DB
+    // Create session
     const session_token = generateEncryptedToken();
     const expiresInDays = remember_me ? 90 : 1;
 
@@ -159,6 +165,7 @@ export const handler = async (event) => {
 
     await supabase.from('users').update({ last_fingerprint: deviceFingerprint }).eq('email', email);
 
+    // Return cookie + success
     return {
       statusCode: 200,
       headers: {
