@@ -17,25 +17,37 @@ function chunkString(str, maxChunkSize = 50000) {
   return chunks;
 }
 
-// Push site files to GitHub using real API
-async function pushSiteToGitHub(userToken, repoName, files) {
+// Exchange GitHub code for access token
+async function getGitHubAccessToken(code) {
   const GITHUB_CLIENT_ID = process.env.CLIENT_ID;
   const GITHUB_CLIENT_SECRET = process.env.CLIENT_SECRET;
 
-  if (!userToken || !repoName || !files) {
-    throw new Error('Missing required parameters for GitHub push');
-  }
+  const response = await fetch(`https://github.com/login/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({
+      client_id: GITHUB_CLIENT_ID,
+      client_secret: GITHUB_CLIENT_SECRET,
+      code
+    })
+  });
 
-  // GitHub API requires Base64 encoding of content
+  const data = await response.json();
+  if (data.error) throw new Error(`GitHub OAuth error: ${data.error_description || data.error}`);
+  return data.access_token;
+}
+
+// Push site files to a GitHub repo
+async function pushSiteToGitHub(userToken, owner, repoName, files) {
   const fileEntries = Object.entries(files);
   for (const [filename, content] of fileEntries) {
-    const url = `https://api.github.com/repos/:owner/${repoName}/contents/${filename}`;
+    const url = `https://api.github.com/repos/${owner}/${repoName}/contents/${filename}`;
     const body = {
       message: `Add ${filename} via Fire-USA site builder`,
       content: Buffer.from(content).toString('base64')
     };
 
-    const response = await fetch(url.replace(':owner', 'user'), {
+    const response = await fetch(url, {
       method: 'PUT',
       headers: {
         Authorization: `token ${userToken}`,
@@ -50,9 +62,10 @@ async function pushSiteToGitHub(userToken, repoName, files) {
     }
   }
 
-  return { success: true, repoUrl: `https://github.com/user/${repoName}` };
+  return { success: true, repoUrl: `https://github.com/${owner}/${repoName}` };
 }
 
+// Lambda / API handler
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
@@ -69,12 +82,16 @@ export const handler = async (event) => {
       };
     }
 
-    const { site_name, files, github_token } = body;
+    const { site_name, files, github_code, github_repo_owner, github_repo_name } = body;
 
     if (!site_name) return { statusCode: 400, body: JSON.stringify({ error: 'Missing site_name' }) };
     if (!/^[a-z0-9-]{3,30}$/.test(site_name)) return { statusCode: 400, body: JSON.stringify({ error: 'Invalid site name' }) };
     if (!files || typeof files !== 'object') return { statusCode: 400, body: JSON.stringify({ error: 'Missing or invalid files object' }) };
-    if (!github_token) return { statusCode: 400, body: JSON.stringify({ error: 'Missing GitHub OAuth token' }) };
+    if (!github_code) return { statusCode: 400, body: JSON.stringify({ error: 'Missing GitHub OAuth code' }) };
+    if (!github_repo_owner || !github_repo_name) return { statusCode: 400, body: JSON.stringify({ error: 'Missing GitHub repo info' }) };
+
+    // Exchange code for a token
+    const githubToken = await getGitHubAccessToken(github_code);
 
     // Track site metadata in Supabase
     const chunkedFiles = {};
@@ -99,8 +116,8 @@ export const handler = async (event) => {
       return { statusCode: 500, body: JSON.stringify({ error: 'Supabase insert error', details: insertError }) };
     }
 
-    // Push files to GitHub using **real API** and secrets
-    const githubResult = await pushSiteToGitHub(github_token, site_name, files);
+    // Push files to the user's GitHub repo
+    const githubResult = await pushSiteToGitHub(githubToken, github_repo_owner, github_repo_name, files);
 
     return {
       statusCode: 200,
