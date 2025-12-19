@@ -32,7 +32,11 @@ async function verifyCaptcha(token, ip) {
 
 // Device fingerprint hash
 function getDeviceFingerprint(headers, frontendFingerprint) {
-  const source = frontendFingerprint || (headers['user-agent'] + headers['accept-language'] + headers['x-forwarded-for']);
+  const source =
+    frontendFingerprint ||
+    (headers['user-agent'] +
+      headers['accept-language'] +
+      headers['x-forwarded-for']);
   return crypto.createHash('sha256').update(source).digest('hex');
 }
 
@@ -46,135 +50,213 @@ async function randomDelay() {
 function generateEncryptedToken() {
   const iv = crypto.randomBytes(16);
   const key = crypto.scryptSync(process.env.SESSION_SECRET, 'salt', 32);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, {
+    authTagLength: 16
+  });
   const uuid = uuidv4();
-  const encrypted = cipher.update(uuid, 'utf8', 'hex') + cipher.final('hex');
+  const encrypted =
+    cipher.update(uuid, 'utf8', 'hex') + cipher.final('hex');
   const tag = cipher.getAuthTag().toString('hex');
   return `${iv.toString('hex')}:${tag}:${encrypted}`;
 }
 
 // Send verification email
 async function sendVerificationEmail(email, code) {
-  const mailOptions = {
+  await transporter.sendMail({
     from: process.env.EMAIL_USER,
     to: email,
-    subject: 'Verify Your New Device/Login',
-    text: `Your verification code is: ${code}`
-  };
-  await transporter.sendMail(mailOptions);
+    subject: 'Verify Your Login',
+    text: `Your verification code is: ${code}\n\nThis code expires in 1 minute.`
+  });
 }
 
 // Generate random verification code
 function generateVerificationCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
-}
-
-// Password crackdown: strong policy check
-function passwordStrongEnough(password) {
-  return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[!@#$%^&*]/.test(password);
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export const handler = async (event) => {
   try {
-    const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
-    const { email, password, remember_me, captcha_token, google, fingerprint, verification_code } = JSON.parse(event.body);
-    const deviceFingerprint = getDeviceFingerprint(event.headers, fingerprint);
+    const ip =
+      event.headers['x-forwarded-for'] ||
+      event.headers['client-ip'] ||
+      'unknown';
+
+    const {
+      email,
+      password,
+      remember_me,
+      captcha_token,
+      google,
+      fingerprint,
+      verification_code
+    } = JSON.parse(event.body);
+
+    const deviceFingerprint = getDeviceFingerprint(
+      event.headers,
+      fingerprint
+    );
 
     // Google OAuth shortcut
     if (google) {
-      return { statusCode: 200, body: JSON.stringify({ success: true, redirect: '/.netlify/functions/googleStart' }) };
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          redirect: '/.netlify/functions/googleStart'
+        })
+      };
     }
 
-    // Rate limit check
+    // Rate limiting
     const allowed = await checkRateLimit(ip + email);
-    if (!allowed) return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }) };
+    if (!allowed) {
+      return {
+        statusCode: 429,
+        body: JSON.stringify({
+          success: false,
+          error: 'Too many login attempts. Try again later.'
+        })
+      };
+    }
 
-    // CAPTCHA check
+    // CAPTCHA
     const captchaValid = await verifyCaptcha(captcha_token, ip);
     if (!captchaValid) {
       await logAttempt(ip + email);
       await randomDelay();
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'CAPTCHA verification failed' }) };
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          success: false,
+          error: 'CAPTCHA verification failed'
+        })
+      };
     }
 
     // Fetch user
-    const { data: user } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
-    const userPassword = user?.encrypted_password || user?.password || '';
-    const dummyHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO';
-    const passwordMatch = user ? await bcrypt.compare(password, userPassword) : await bcrypt.compare(dummyHash, dummyHash);
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
 
-    // Reject if password/user/device invalid or honeytoken
+    const userPassword =
+      user?.encrypted_password || user?.password || '';
+    const dummyHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO';
+
+    const passwordMatch = user
+      ? await bcrypt.compare(password, userPassword)
+      : await bcrypt.compare(dummyHash, dummyHash);
+
     if (!user || !passwordMatch || !user.verified || user.is_honeytoken) {
       await logAttempt(ip + email);
       await randomDelay();
-      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid email or password or device' }) };
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          success: false,
+          error: 'Invalid email or password'
+        })
+      };
     }
 
-    // Password policy enforcement (optional)
-    if (!passwordStrongEnough(password)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Password does not meet strength requirements' }) };
-    }
+    // 🔐 ZERO TRUST: EVERY LOGIN REQUIRES EMAIL VERIFICATION
+    if (!verification_code) {
+      const code = generateVerificationCode();
 
-    // New device or first login session: email verification required
-    let sessionNeedsVerification = false;
-    if (!user.last_fingerprint || user.last_fingerprint !== deviceFingerprint) {
-      sessionNeedsVerification = true;
-
-      if (!verification_code) {
-        const code = generateVerificationCode();
-        await supabase.from('pending_verifications').upsert({
+      await supabase.from('pending_verifications').upsert(
+        {
           email,
           code,
           fingerprint: deviceFingerprint,
-          expires_at: new Date(Date.now() + 10 * 60 * 1000) // 10 min validity
-        }, { onConflict: ['email'] });
-        await sendVerificationEmail(email, code);
-        return { statusCode: 200, body: JSON.stringify({ success: true, verification_required: true, message: 'Verification code sent to email' }) };
-      }
+          expires_at: new Date(Date.now() + 60 * 1000) // 1 minute
+        },
+        { onConflict: ['email', 'fingerprint'] }
+      );
 
-      // Check provided verification code
-      const { data: pending } = await supabase.from('pending_verifications')
-        .select('*')
-        .eq('email', email)
-        .eq('fingerprint', deviceFingerprint)
-        .maybeSingle();
+      await sendVerificationEmail(email, code);
 
-      if (!pending || pending.code !== verification_code || new Date(pending.expires_at) < new Date()) {
-        return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Invalid or expired verification code' }) };
-      }
-
-      // Delete verified code
-      await supabase.from('pending_verifications').delete().eq('email', email).eq('fingerprint', deviceFingerprint);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          verification_required: true,
+          message:
+            'Verification code sent to your email. It expires in 1 minute.'
+        })
+      };
     }
 
-    // Generate session token and store it
+    // Verify code
+    const { data: pending } = await supabase
+      .from('pending_verifications')
+      .select('*')
+      .eq('email', email)
+      .eq('fingerprint', deviceFingerprint)
+      .maybeSingle();
+
+    if (
+      !pending ||
+      pending.code !== verification_code ||
+      new Date(pending.expires_at) < new Date()
+    ) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          success: false,
+          error: 'Invalid or expired verification code'
+        })
+      };
+    }
+
+    // Clean up verification
+    await supabase
+      .from('pending_verifications')
+      .delete()
+      .eq('email', email)
+      .eq('fingerprint', deviceFingerprint);
+
+    // Create session (cookie UNCHANGED)
     const session_token = generateEncryptedToken();
     const expiresInDays = remember_me ? 90 : 1;
 
     await supabase.from('sessions').insert({
       user_email: email,
       session_token,
-      expires_at: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000),
-      verified: !sessionNeedsVerification
+      expires_at: new Date(
+        Date.now() + expiresInDays * 24 * 60 * 60 * 1000
+      ),
+      verified: true
     });
 
-    await supabase.from('users').update({ last_fingerprint: deviceFingerprint }).eq('email', email);
+    await supabase
+      .from('users')
+      .update({ last_fingerprint: deviceFingerprint })
+      .eq('email', email);
 
     return {
       statusCode: 200,
       headers: {
-        'Set-Cookie': `session_token=${session_token}; Path=/; HttpOnly; Secure; Max-Age=${expiresInDays*24*60*60}; SameSite=Strict`,
+        'Set-Cookie': `session_token=${session_token}; Path=/; HttpOnly; Secure; Max-Age=${expiresInDays *
+          24 *
+          60 *
+          60}; SameSite=Strict`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         success: true,
-        message: sessionNeedsVerification ? 'Verification complete, login successful!' : 'Login successful!',
-        verification_required: false
+        message: 'Verification complete. Login successful!'
       })
     };
-
   } catch (err) {
     console.error('LOGIN ERROR:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: 'Internal server error'
+      })
+    };
   }
 };
