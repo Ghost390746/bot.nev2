@@ -27,10 +27,13 @@ export const handler = async (event) => {
       body = JSON.parse(event.body || '{}');
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
-      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body', details: parseError.message }) };
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Invalid JSON body', details: parseError.message })
+      };
     }
 
-    const { user_id, site_name, files } = body;
+    const { site_name, files } = body;
 
     // Require site_name
     if (!site_name) {
@@ -54,7 +57,10 @@ export const handler = async (event) => {
 
     if (selectError) {
       console.error('Supabase select error:', selectError);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Supabase select error', details: selectError.message }) };
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Supabase select error', details: selectError })
+      };
     }
 
     if (existing) {
@@ -71,20 +77,31 @@ export const handler = async (event) => {
     const expires_at = new Date();
     expires_at.setMonth(expires_at.getMonth() + 1);
 
-    // Insert new site
-    const { error: insertError } = await supabase
+    // Insert new site **without user_id**
+    const { data: insertedData, error: insertError, status } = await supabase
       .from('sites')
       .insert({
-        user_id: user_id || null,
+        name: site_name,        // make sure your table has a 'name' column
         subdomain: site_name,
         files: chunkedFiles,
         expires_at,
         created_at: new Date()
       });
 
+    // If insert fails, return full error object
     if (insertError) {
-      console.error('Supabase insert error:', insertError);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Supabase insert error', details: insertError.message }) };
+      console.error('Supabase insert error full object:', insertError);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: 'Supabase insert error',
+          status,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code
+        })
+      };
     }
 
     return {
@@ -92,7 +109,8 @@ export const handler = async (event) => {
       body: JSON.stringify({
         success: true,
         message: 'Site created successfully',
-        url: `https://${site_name}.fire-usa.com`
+        url: `https://${site_name}.fire-usa.com`,
+        insertedData // returns the inserted row(s)
       })
     };
 
