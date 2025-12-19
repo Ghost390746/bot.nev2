@@ -11,6 +11,7 @@ input, a { width:100%; max-width:400px; margin:10px 0; padding:10px; font-size:1
 a { background:#007bff; color:white; cursor:pointer; }
 a:hover { background:#0056b3; }
 #output { margin-top:20px; font-family:monospace; padding:10px; border-radius:6px; }
+.disabled { background:#ccc !important; cursor:not-allowed !important; }
 </style>
 </head>
 <body>
@@ -26,12 +27,33 @@ a:hover { background:#0056b3; }
 
 <script>
 const output = document.getElementById('output');
+const signupBtn = document.getElementById('signupBtn');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
 
-document.getElementById('signupBtn').addEventListener('click', async (e) => {
+async function checkLimit() {
+  try {
+    const res = await fetch('/.netlify/functions/check-limit');
+    const data = await res.json();
+    if(!data.allowed){
+      output.textContent = "Signup limit reached. Only the test account is allowed.";
+      signupBtn.classList.add('disabled');
+      signupBtn.removeEventListener('click', signupHandler);
+      return false;
+    }
+    return true;
+  } catch(err) {
+    console.error(err);
+    output.textContent = "Failed to check user limit.";
+    return false;
+  }
+}
+
+async function signupHandler(e) {
   e.preventDefault();
 
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value.trim();
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
   const username = email.split('@')[0];
   const captcha_token = hcaptcha.getResponse();
 
@@ -86,6 +108,13 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
 
   } catch(err) {
     output.textContent = `Error: ${err.message}`;
+  }
+}
+
+// Check limit before enabling signup
+checkLimit().then(allowed => {
+  if(allowed){
+    signupBtn.addEventListener('click', signupHandler);
   }
 });
 </script>
