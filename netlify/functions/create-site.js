@@ -16,6 +16,28 @@ function chunkString(str, maxChunkSize = 50000) {
   return chunks;
 }
 
+// Helper: trigger Netlify deploy via build hook
+async function triggerNetlifyDeploy(siteName) {
+  const NETLIFY_DEPLOY_HOOK = process.env.NETLIFY_DEPLOY_HOOK; // add this to your environment
+  if (!NETLIFY_DEPLOY_HOOK) return;
+
+  try {
+    const response = await fetch(NETLIFY_DEPLOY_HOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site_name: siteName
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Netlify deploy hook failed:', response.statusText);
+    }
+  } catch (err) {
+    console.error('Error triggering Netlify deploy:', err);
+  }
+}
+
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
@@ -35,7 +57,6 @@ export const handler = async (event) => {
 
     const { site_name, files } = body;
 
-    // Require site_name
     if (!site_name) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Missing site_name' }) };
     }
@@ -57,38 +78,34 @@ export const handler = async (event) => {
 
     if (selectError) {
       console.error('Supabase select error:', selectError);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Supabase select error', details: selectError })
-      };
+      return { statusCode: 500, body: JSON.stringify({ error: 'Supabase select error', details: selectError }) };
     }
 
     if (existing) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Subdomain already exists' }) };
     }
 
-    // Chunk files if needed
+    // Chunk files
     const chunkedFiles = {};
     for (const [filename, content] of Object.entries(files)) {
-      chunkedFiles[filename] = chunkString(content, 50000); // 50 KB per chunk
+      chunkedFiles[filename] = chunkString(content, 50000);
     }
 
     // Set expiration one month from now
     const expires_at = new Date();
     expires_at.setMonth(expires_at.getMonth() + 1);
 
-    // Insert new site **without user_id**
+    // Insert into Supabase
     const { data: insertedData, error: insertError, status } = await supabase
       .from('sites')
       .insert({
-        name: site_name,        // make sure your table has a 'name' column
+        name: site_name,
         subdomain: site_name,
         files: chunkedFiles,
         expires_at,
         created_at: new Date()
       });
 
-    // If insert fails, return full error object
     if (insertError) {
       console.error('Supabase insert error full object:', insertError);
       return {
@@ -104,13 +121,16 @@ export const handler = async (event) => {
       };
     }
 
+    // ✅ Trigger Netlify deploy hook
+    await triggerNetlifyDeploy(site_name);
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
-        message: 'Site created successfully',
+        message: 'Site created successfully and deploy triggered',
         url: `https://${site_name}.fire-usa.com`,
-        insertedData // returns the inserted row(s)
+        insertedData
       })
     };
 
