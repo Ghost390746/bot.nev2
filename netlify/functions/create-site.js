@@ -28,16 +28,14 @@ export const handler = async (event) => {
       };
     }
 
-    // Check if the subdomain already exists
+    // Check if the subdomain already exists using maybeSingle
     const { data: existing, error: selectError } = await supabase
       .from('sites')
       .select('subdomain')
       .eq('subdomain', site_name)
-      .single();
+      .maybeSingle(); // <-- changed here
 
-    if (selectError && selectError.code !== 'PGRST116') {
-      throw selectError;
-    }
+    if (selectError) throw selectError;
 
     if (existing) {
       return {
@@ -62,13 +60,13 @@ export const handler = async (event) => {
 
     if (insertError) throw insertError;
 
-    // ✅ Return URL matching your wildcard domain
+    // Return URL matching your wildcard domain
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
         message: 'Site created successfully',
-        url: `https://${site_name}.fire-usa.com` // updated to match your wildcard domain
+        url: `https://${site_name}.fire-usa.com`
       })
     };
 
