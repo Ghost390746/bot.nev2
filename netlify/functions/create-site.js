@@ -11,7 +11,8 @@ export const handler = async (event) => {
       return { statusCode: 405, body: 'Method Not Allowed' };
     }
 
-    const { user_id, site_name } = JSON.parse(event.body || '{}');
+    // Parse JSON body
+    const { user_id, site_name, files } = JSON.parse(event.body || '{}');
 
     // Validate inputs
     if (!user_id || !site_name) {
@@ -28,14 +29,24 @@ export const handler = async (event) => {
       };
     }
 
-    // Check if the subdomain already exists using maybeSingle
+    if (!files || typeof files !== 'object') {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing or invalid files object' })
+      };
+    }
+
+    // Check if the subdomain already exists
     const { data: existing, error: selectError } = await supabase
       .from('sites')
       .select('subdomain')
       .eq('subdomain', site_name)
-      .maybeSingle(); // <-- changed here
+      .maybeSingle();
 
-    if (selectError) throw selectError;
+    if (selectError) {
+      console.error('Supabase select error:', selectError);
+      throw selectError;
+    }
 
     if (existing) {
       return {
@@ -48,19 +59,23 @@ export const handler = async (event) => {
     const expires_at = new Date();
     expires_at.setMonth(expires_at.getMonth() + 1);
 
-    // Insert new site into Supabase
+    // Insert new site with files
     const { error: insertError } = await supabase
       .from('sites')
       .insert({
         user_id,
         subdomain: site_name,
+        files,           // store extracted ZIP files here
         expires_at,
         created_at: new Date()
       });
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error('Supabase insert error:', insertError);
+      throw insertError;
+    }
 
-    // Return URL matching your wildcard domain
+    // Return URL matching wildcard domain
     return {
       statusCode: 200,
       body: JSON.stringify({
