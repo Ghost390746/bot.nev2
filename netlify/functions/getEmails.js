@@ -1,54 +1,61 @@
-// netlify/functions/getEmails.js
 import { createClient } from '@supabase/supabase-js';
 import cookie from 'cookie';
+import crypto from 'crypto';
 
-// Use service key for secure server-side access
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
+// Generate device fingerprint hash
+function getDeviceFingerprint(headers) {
+  const source = headers['user-agent'] + headers['accept-language'] + (headers['x-forwarded-for'] || '');
+  return crypto.createHash('sha256').update(source).digest('hex');
+}
+
 export const handler = async (event) => {
   try {
-    // 🍪 Parse cookies
+    // 🍪 Parse cookies safely
     const cookies = cookie.parse(event.headers.cookie || '');
+    const session_token = cookies['__Host-session_secure'] || cookies['session_token'];
     
-    // ✅ Make sure this matches the cookie your login sets
-    const session_token = cookies['__Host-session_secure'] || cookies['session_token']; 
-
-    if (!session_token) {
-      return {
-        statusCode: 401,
-        body: JSON.stringify({ success: false, error: 'Not authenticated: missing session token' })
-      };
+    if (!session_token || typeof session_token !== 'string') {
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated: missing or invalid session token' }) };
     }
 
-    // 🔐 Verify session
+    // 🔐 Verify session with expiration
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
-      .select('user_email')
+      .select('user_email, expires_at, fingerprint')
       .eq('session_token', session_token)
       .single();
 
     if (sessionError || !sessionData) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ success: false, error: 'Invalid or expired session' })
-      };
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid or expired session' }) };
+    }
+
+    // Check session expiration
+    if (new Date(sessionData.expires_at) < new Date()) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Session expired' }) };
+    }
+
+    // Device fingerprint verification
+    const currentFingerprint = getDeviceFingerprint(event.headers);
+    if (sessionData.fingerprint && sessionData.fingerprint !== currentFingerprint) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Session invalid for this device' }) };
     }
 
     const user_email = sessionData.user_email;
 
-    // 📥 Fetch inbox emails for this user
+    // Fetch emails securely, only safe fields
     const { data: emails, error: emailsError } = await supabase
       .from('emails')
-      .select('*')
+      .select('id, subject, from_user, created_at') // avoid sending sensitive raw fields
       .eq('to_user', user_email)
       .order('created_at', { ascending: false });
 
     if (emailsError) throw emailsError;
 
-    // ✅ Return emails safely
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true, emails })
