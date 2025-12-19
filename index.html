@@ -23,7 +23,6 @@
   .links-container a:hover { background:#007bff; color:#fff; }
   #incomingRequests div { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:5px; background:#fff; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
   #incomingRequests div button { margin-left:5px; padding:3px 8px; }
-
   #chatBubble { position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; border-radius: 50%; background: #007bff; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.25); z-index: 9999; }
   #chatBubble span { font-size: 10px; margin-top: 2px; max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #chatBadge { position: absolute; top: 6px; right: 6px; background: red; color: white; font-size: 10px; padding: 2px 6px; border-radius: 50%; display: none; }
@@ -81,12 +80,22 @@
 </div>
 
 <script>
+// -----------------------
+// SHOW TEST ACCOUNT ALERT
+// -----------------------
+window.addEventListener('DOMContentLoaded', () => {
+  alert('💡 Test Account\nEmail: test-email@test.test.com\nPassword: test');
+});
+
+// -----------------------
+// GET SESSION TOKEN FROM COOKIE
+// -----------------------
 async function getSessionToken() {
-  return document.cookie.split('; ').find(r => r.startsWith('session_token='))?.split('=')[1];
+  return document.cookie.split('; ').find(c => c.trim().startsWith('session_token='))?.split('=')[1] || null;
 }
 
 // -----------------------
-// PROFILE & ONLINE STATUS
+// LOAD USER PROFILE
 // -----------------------
 async function loadProfile() {
   try {
@@ -95,7 +104,7 @@ async function loadProfile() {
 
     const res = await fetch('/.netlify/functions/profileCreation', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ session_token: token })
     });
     const result = await res.json();
@@ -113,8 +122,7 @@ async function loadProfile() {
       <span>${user.username || user.email} - <span class="${online}">${online}</span></span>
     `;
 
-    const chatUser = document.getElementById('chatUsername');
-    if(chatUser) chatUser.textContent = user.username || user.email;
+    document.getElementById('chatUsername').textContent = user.username || user.email;
 
   } catch(e) {
     console.error('Failed to load profile', e);
@@ -129,7 +137,7 @@ async function loadIncoming() {
     const token = await getSessionToken();
     const res = await fetch('/.netlify/functions/friend-requests', {
       method:'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ action:'list', user_email: window.userEmail, session_token: token })
     });
     const data = await res.json();
@@ -145,7 +153,7 @@ async function loadIncoming() {
   } catch(e){ console.error(e); }
 }
 
-window.respond = async (id,status)=>{
+window.respond = async (id,status) => {
   const token = await getSessionToken();
   const res = await fetch('/.netlify/functions/friend-requests',{
     method:'POST',
@@ -157,13 +165,13 @@ window.respond = async (id,status)=>{
   loadIncoming();
 }
 
-document.getElementById('sendRequestBtn').addEventListener('click', async ()=>{
+document.getElementById('sendRequestBtn').addEventListener('click', async () => {
   const token = await getSessionToken();
   const receiver_email = document.getElementById('friendEmail').value;
   const res = await fetch('/.netlify/functions/friend-requests',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ action:'send', sender_email:window.userEmail, receiver_email, session_token: token })
+    body: JSON.stringify({ action:'send', sender_email: window.userEmail, receiver_email, session_token: token })
   });
   const data = await res.json();
   alert(data.success ? 'Request sent!' : data.error);
@@ -204,14 +212,14 @@ const fbxModels = [
   {id:'model1',name:'Humanoid Default'},
   {id:'model2',name:'Robot Model'}
 ];
-fbxModels.forEach(m=>{
+fbxModels.forEach(m => {
   const opt = document.createElement('option');
   opt.value = m.id;
   opt.textContent = m.name;
   fbxSelect.appendChild(opt);
 });
 
-form.addEventListener('submit', async e=>{
+form.addEventListener('submit', async e => {
   e.preventDefault();
   const token = await getSessionToken();
   const name = document.getElementById('botName').value.trim();
@@ -263,14 +271,3 @@ loadProfile().then(loadIncoming).then(loadVoices);
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
