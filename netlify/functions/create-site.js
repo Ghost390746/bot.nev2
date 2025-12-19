@@ -8,11 +8,18 @@ const supabase = createClient(
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: 'Method Not Allowed' };
+      return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
 
-    // Parse JSON body
-    const { user_id, site_name, files } = JSON.parse(event.body || '{}');
+    let body;
+    try {
+      body = JSON.parse(event.body || '{}');
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body', details: parseError.message }) };
+    }
+
+    const { user_id, site_name, files } = body;
 
     // Validate inputs
     if (!user_id || !site_name) {
@@ -45,7 +52,7 @@ export const handler = async (event) => {
 
     if (selectError) {
       console.error('Supabase select error:', selectError);
-      throw selectError;
+      return { statusCode: 500, body: JSON.stringify({ error: 'Supabase select error', details: selectError.message }) };
     }
 
     if (existing) {
@@ -65,14 +72,14 @@ export const handler = async (event) => {
       .insert({
         user_id,
         subdomain: site_name,
-        files,           // store extracted ZIP files here
+        files,
         expires_at,
         created_at: new Date()
       });
 
     if (insertError) {
       console.error('Supabase insert error:', insertError);
-      throw insertError;
+      return { statusCode: 500, body: JSON.stringify({ error: 'Supabase insert error', details: insertError.message }) };
     }
 
     // Return URL matching wildcard domain
@@ -86,10 +93,10 @@ export const handler = async (event) => {
     };
 
   } catch (err) {
-    console.error('create-site error:', err);
+    console.error('Unhandled create-site error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Internal server error', details: err.message })
+      body: JSON.stringify({ error: 'Unhandled error', details: err.message })
     };
   }
 };
