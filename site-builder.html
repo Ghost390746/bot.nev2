@@ -33,15 +33,12 @@
   const createBtn = document.getElementById('createSiteBtn');
   const previewFrame = document.getElementById('previewFrame');
 
-  // Start GitHub OAuth login: backend will handle CLIENT_ID/SECRET safely
+  // GitHub OAuth login starts via backend (create-site handles secrets)
   githubLoginBtn.addEventListener('click', () => {
-    // Redirect user to the GitHub OAuth login page
-    // Your backend (create-site function) will exchange the code securely
-  window.location.href = 'https://github.com/login/oauth/authorize?scope=repo&client_id=/.netlify/functions/create-site';
-
+    window.location.href = '/.netlify/functions/create-site?action=login';
   });
 
-  // Extract GitHub OAuth code from URL
+  // Extract GitHub OAuth code from URL after redirect
   const urlParams = new URLSearchParams(window.location.search);
   const githubCode = urlParams.get('code');
 
@@ -50,7 +47,7 @@
     repoSelect.style.display = 'block';
     createBtn.style.display = 'block';
 
-    // Fetch user repos using create-site function (backend handles token exchange)
+    // Fetch user's repos via backend function (token exchange handled safely)
     fetch('/.netlify/functions/create-site', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -66,9 +63,8 @@
           repoSelect.appendChild(option);
         });
 
-        // Clean the URL after login
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, '', cleanUrl);
+        // Clean URL so ?code=… is gone
+        window.history.replaceState({}, '', window.location.pathname);
       })
       .catch(err => {
         console.error('Failed to fetch repos:', err);
@@ -101,7 +97,7 @@
         }
       }
 
-      // Call create-site function which handles token exchange & repo push
+      // Call create-site function to push files and handle OAuth securely
       const response = await fetch('/.netlify/functions/create-site', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
