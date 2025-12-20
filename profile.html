@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Create Profile</title>
 
-<!-- Favicon -->
 <link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
 <link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
 
@@ -85,7 +84,7 @@ button { padding: 10px 15px; margin-top: 10px; }
 <script>
 let currentStep = 0;
 let fbxSelected = [];
-let frontendFingerprint = crypto.randomUUID(); // optional for fingerprinting
+let frontendFingerprint = crypto.randomUUID(); // optional fingerprinting
 
 // FBX selection
 document.querySelectorAll('.fbx-options div').forEach(el => {
@@ -148,7 +147,7 @@ async function verifyCode(){
   }
 }
 
-// Next step
+// Next step (Steps 1–3)
 async function nextStep(){
   let data = {};
 
