@@ -57,11 +57,8 @@
 
       try {
         const sessionToken = getSessionCookie();
-
         const headers = {};
-        if (sessionToken) {
-          headers['Authorization'] = 'Bearer ' + sessionToken;
-        }
+        if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
 
         const response = await fetch('/.netlify/functions/upload-video', {
           method: 'POST',
@@ -117,8 +114,8 @@
           const div = document.createElement('div');
           div.className = 'video-item';
           div.innerHTML = `
-            <p>User ID: ${video.user_id}</p>
-            <p>Uploaded: ${new Date(video.created_at).toLocaleString()}</p>
+            <p>User: ${video.user ? video.user.email : 'Unknown'}</p>
+            <p>Uploaded: ${video.uploaded_at ? new Date(video.uploaded_at).toLocaleString() : 'Unknown'}</p>
             <video controls src="${video.videoUrl}"></video>
           `;
           videosList.appendChild(div);
