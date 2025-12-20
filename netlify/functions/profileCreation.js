@@ -19,7 +19,7 @@ export const handler = async (event) => {
 
     // 🍪 Parse cookies
     const cookies = cookie.parse(event.headers.cookie || '');
-    const session_token = cookies['__Host-session_secure'] || cookies['session_token'];
+    const session_token = cookies['__Host-session_secure']; // only the secure host cookie
 
     if (!session_token) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Unauthorized: No session token.' }) };
