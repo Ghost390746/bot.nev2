@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import busboy from 'busboy';
-import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
@@ -9,16 +9,22 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB max per video
 
 // Verify session cookie
-async function verifySession(cookie) {
-  if (!cookie) return null;
-  const sessionToken = cookie.replace('__Host-session_secure=', '').split(';')[0];
+async function verifySession(cookieHeader) {
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const sessionCookie = cookies.find(c => c.startsWith('__Host-session_secure='));
+  if (!sessionCookie) return null;
+
+  const sessionToken = sessionCookie.split('=')[1];
+
   const { data: session } = await supabase
     .from('sessions')
     .select('*')
     .eq('session_token', sessionToken)
     .maybeSingle();
 
-  if (!session || new Date(session.expires_at) < new Date() || !session.verified) return null;
+  if (!session || !session.verified || new Date(session.expires_at) < new Date()) return null;
   return session.user_email;
 }
 
@@ -51,7 +57,7 @@ export const handler = async (event) => {
       }
 
       const safeName = originalFilename.replace(/[^a-z0-9_\-\.]/gi, '_');
-      filename = `${Date.now()}_${safeName}`;
+      filename = `${Date.now()}_${uuidv4()}_${safeName}`;
 
       const chunks = [];
       let totalSize = 0;
@@ -69,6 +75,10 @@ export const handler = async (event) => {
       });
     });
 
+    bb.on('error', (err) => {
+      return resolve({ statusCode: 500, body: 'Upload error: ' + err.message });
+    });
+
     bb.on('close', async () => {
       if (!uploadBuffer) return resolve({ statusCode: 400, body: 'No video uploaded.' });
 
@@ -81,7 +91,7 @@ export const handler = async (event) => {
       if (storageError) return resolve({ statusCode: 500, body: storageError.message });
 
       // Create signed URL (1 hour)
-      const { data: signedUrlData, error: signedUrlError } = supabase
+      const { data: signedUrlData, error: signedUrlError } = await supabase
         .storage
         .from('videos')
         .createSignedUrl(filename, 3600);
@@ -91,7 +101,7 @@ export const handler = async (event) => {
       // Insert metadata
       await supabase
         .from('videos')
-        .insert([{ user_id: userId, video_url: filename }]);
+        .insert([{ user_id: userId, video_url: filename, original_filename: filename, created_at: new Date() }]);
 
       // Delete oldest videos if >100
       const { data: allVideos } = await supabase
