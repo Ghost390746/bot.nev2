@@ -1,18 +1,16 @@
-// netlify/functions/getVerifiedUsers.js
 import { createClient } from '@supabase/supabase-js';
 import cookie from 'cookie';
 
-// Use SERVICE_KEY if you need secure reads/writes
+// Use SERVICE_KEY for secure reads/writes
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 export const handler = async (event) => {
   try {
-    // 🍪 Read cookies safely
+    // 🍪 Parse cookies
     const cookies = cookie.parse(event.headers.cookie || '');
     
-    // ✅ Match the actual login cookie names
+    // ✅ Match login cookie names
     const session_token = cookies['__Host-session_secure'] || cookies['session_token'];
-
     if (!session_token) {
       return {
         statusCode: 401,
@@ -25,7 +23,7 @@ export const handler = async (event) => {
       .from('sessions')
       .select('user_email, expires_at')
       .eq('session_token', session_token)
-      .maybeSingle(); // avoids crash if no session
+      .maybeSingle();
 
     if (sessionError || !sessionData) {
       return {
@@ -41,19 +39,31 @@ export const handler = async (event) => {
       };
     }
 
-    // ✅ Get all verified users excluding self
+    // ✅ Get all verified users excluding self with avatar & last_online
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('email')
+      .select('email, username, avatar_url, last_online')
       .eq('verified', true)
       .neq('email', sessionData.user_email)
       .order('email', { ascending: true });
 
     if (usersError) throw usersError;
 
+    // Map online status dynamically (last 5 minutes)
+    const mappedUsers = users.map(u => {
+      const lastActive = new Date(u.last_online || 0);
+      const online = (Date.now() - lastActive.getTime()) < 5 * 60 * 1000;
+      return {
+        email: u.email,
+        username: u.username || u.email,
+        avatar_url: u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.username || u.email)}.svg`,
+        online
+      };
+    });
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, users })
+      body: JSON.stringify({ success: true, users: mappedUsers })
     };
 
   } catch (err) {
