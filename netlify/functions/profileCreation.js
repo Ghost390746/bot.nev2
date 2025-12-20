@@ -54,12 +54,11 @@ export const handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     const { step, email, verification_code, frontendFingerprint, username, bio, profile_picture, fbx_avatar_ids, online_status, new_password, current_password } = body;
 
-    // Parse existing cookies
+    // 1️⃣ Check for existing session cookie
     const cookies = cookie.parse(event.headers.cookie || '');
     let user_email = null;
-
-    if (cookies['session_secure']) {
-      const sessionToken = cookies['session_secure'];
+    if (cookies['__Host-session_secure']) {
+      const sessionToken = cookies['__Host-session_secure'];
       const { data: session } = await supabase.from('sessions')
         .select('user_email, expires_at')
         .eq('session_token', sessionToken)
@@ -70,7 +69,7 @@ export const handler = async (event) => {
       }
     }
 
-    // Step 0: Email verification if no session
+    // 2️⃣ Step 0: email verification if no session
     if (!user_email) {
       if (!email) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Email is required' }) };
 
@@ -106,7 +105,7 @@ export const handler = async (event) => {
         user = newUser;
       }
 
-      // Create session cookie
+      // Create session cookie for custom domain
       const session_token = generateEncryptedToken();
       const fingerprint = getDeviceFingerprint(event.headers, frontendFingerprint);
       await supabase.from('sessions').insert({
@@ -125,34 +124,53 @@ export const handler = async (event) => {
         },
         body: JSON.stringify({ success:true, message:'Device verified. Secure session created!', user:{...user,password:undefined} })
       };
-    }
+    } // <-- closes if (!user_email)
 
-    // Step 1+: Profile updates
+    // 3️⃣ Step 1+: Profile updates
     let { data: user } = await supabase.from('users').select('*').eq('email', user_email).maybeSingle();
     if (!user) return { statusCode: 404, body: JSON.stringify({ success:false, error:'User not found' }) };
 
     let updates = {};
     if (step) {
       switch(step){
-        case 1: if(!username||!bio) return { statusCode:400, body:JSON.stringify({success:false,error:'Username and bio required'})}; updates.username=username; updates.bio=bio; break;
-        case 2: if(!profile_picture) return { statusCode:400, body:JSON.stringify({success:false,error:'Profile picture required'})}; updates.profile_picture=profile_picture; break;
-        case 3: if(!fbx_avatar_ids || !Array.isArray(fbx_avatar_ids) || fbx_avatar_ids.length>3) return { statusCode:400, body:JSON.stringify({success:false,error:'Select up to 3 FBX avatars'})}; updates.fbx_avatar_ids=fbx_avatar_ids; break;
-        case 4: updates.completed_profile=true; break;
-        default: if(username) updates.username=username; if(bio) updates.bio=bio; if(profile_picture) updates.profile_picture=profile_picture; if(fbx_avatar_ids) updates.fbx_avatar_ids=fbx_avatar_ids;
+        case 1: 
+          if(!username||!bio) return { statusCode:400, body:JSON.stringify({success:false,error:'Username and bio required'})};
+          updates.username=username; updates.bio=bio; 
+          break;
+        case 2: 
+          if(!profile_picture) return { statusCode:400, body:JSON.stringify({success:false,error:'Profile picture required'})};
+          updates.profile_picture=profile_picture; 
+          break;
+        case 3: 
+          if(!fbx_avatar_ids || !Array.isArray(fbx_avatar_ids) || fbx_avatar_ids.length>3) 
+            return { statusCode:400, body:JSON.stringify({success:false,error:'Select up to 3 FBX avatars'})};
+          updates.fbx_avatar_ids=fbx_avatar_ids; 
+          break;
+        case 4: 
+          updates.completed_profile=true; 
+          break;
+        default: 
+          if(username) updates.username=username; 
+          if(bio) updates.bio=bio; 
+          if(profile_picture) updates.profile_picture=profile_picture; 
+          if(fbx_avatar_ids) updates.fbx_avatar_ids=fbx_avatar_ids;
       }
 
       // Online status
       if (online_status) {
-        if (!['online','offline'].includes(online_status)) return { statusCode:400, body:JSON.stringify({success:false,error:'Invalid online_status'}) };
+        if (!['online','offline'].includes(online_status)) 
+          return { statusCode:400, body:JSON.stringify({success:false,error:'Invalid online_status'}) };
         updates.online_status=online_status;
         updates.last_online=new Date().toISOString();
       }
 
       // Password change
       if (new_password) {
-        if (!current_password) return { statusCode:400, body:JSON.stringify({success:false,error:'Current password required'}) };
+        if (!current_password) 
+          return { statusCode:400, body:JSON.stringify({success:false,error:'Current password required'}) };
         const match = await bcrypt.compare(current_password, user.encrypted_password || user.password || '');
-        if (!match) return { statusCode:401, body:JSON.stringify({success:false,error:'Incorrect current password'}) };
+        if (!match) 
+          return { statusCode:401, body:JSON.stringify({success:false,error:'Incorrect current password'}) };
         updates.encrypted_password = await bcrypt.hash(new_password,10);
       }
 
