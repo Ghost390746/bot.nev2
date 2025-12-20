@@ -7,7 +7,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const handler = async () => {
   try {
-    // List all files in the 'videos' bucket
+    // List all files in the 'videos' storage bucket
     const { data: files, error: listError } = await supabase
       .storage
       .from('videos')
@@ -18,7 +18,7 @@ export const handler = async () => {
 
     const videosWithUser = await Promise.all(
       files.map(async (file) => {
-        // Create signed URL
+        // Create signed URL for the video
         const { data: signedUrlData, error: signedUrlError } = await supabase
           .storage
           .from('videos')
@@ -26,27 +26,28 @@ export const handler = async () => {
 
         if (signedUrlError) return null;
 
-        // Try to get video metadata from videos table
-        const { data: videoRecord } = await supabase
+        // Get video metadata from the videos table
+        const { data: videoRecord, error: videoError } = await supabase
           .from('videos')
-          .select('user_id')
+          .select('user_id, created_at')
           .eq('video_url', file.name)
           .maybeSingle();
 
-        let user = null;
-        if (videoRecord) {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('id, email')
-            .eq('id', videoRecord.user_id)
-            .maybeSingle();
-          if (userData) user = { id: userData.id, email: userData.email };
-        }
+        if (videoError || !videoRecord) return null;
+
+        // Fetch user info
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('id', videoRecord.user_id)
+          .maybeSingle();
+
+        const user = userData ? { id: userData.id, email: userData.email } : null;
 
         return {
           name: file.name,
           size: file.size,
-          updated_at: file.updated_at,
+          uploaded_at: videoRecord.created_at, // use created_at from videos table
           videoUrl: signedUrlData.signedUrl,
           user
         };
@@ -55,7 +56,7 @@ export const handler = async () => {
 
     return {
       statusCode: 200,
-      body: JSON.stringify(videosWithUser.filter(v => v))
+      body: JSON.stringify(videosWithUser.filter(v => v)) // remove nulls
     };
   } catch (err) {
     return { statusCode: 500, body: err.message };
