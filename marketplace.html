@@ -3,8 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <title>Bot Marketplace</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
+
   <style>
     body { font-family: Arial, sans-serif; background: #f9fafc; margin: 0; padding: 40px; }
+
+    /* Top logo header */
+    #siteHeader {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #topLogo {
+      max-height: 80px;
+      cursor: pointer;
+    }
+
     h1 { text-align: center; color: #333; }
     .bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; margin-top: 30px; }
     .bot-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; justify-content: space-between; }
@@ -23,6 +40,13 @@
   </style>
 </head>
 <body>
+
+<!-- Top Logo -->
+<header id="siteHeader">
+  <a href="/index.html">
+    <img src="https://botnet2.netlify.app/assets/logo.png" alt="Botnev Logo" id="topLogo" />
+  </a>
+</header>
 
 <h1>🤖 Bot Marketplace</h1>
 <div class="bot-grid" id="botGrid">Loading bots...</div>
