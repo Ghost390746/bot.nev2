@@ -3,209 +3,121 @@
 <head>
   <meta charset="UTF-8">
   <title>Login</title>
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
   <link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
 
+  <!-- Tailwind CSS -->
+  <link href="/styles.css" rel="stylesheet">
+
   <!-- hCaptcha script -->
   <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
-
-  <style>
-    #verifySection { display: none; margin-top: 1em; }
-    #output { margin-top: 1em; color: red; }
-
-    .terms {
-      margin-top: 10px;
-      font-size: 0.9em;
-    }
-
-    /* Optional basic header styling */
-    #siteHeader {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-
-    #topLogo {
-      max-height: 80px;
-      cursor: pointer;
-    }
-  </style>
 </head>
-<body>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
 
-  <!-- Top Logo -->
-  <header id="siteHeader">
-    <a href="/index.html">
-      <img
-        src="https://botnet2.netlify.app/assets/logo.png"
-        alt="Botnev Logo"
-        id="topLogo"
-      />
-    </a>
-  </header>
+  <div class="card w-full max-w-md shadow-xl p-6 bg-white">
+    <div class="text-center mb-4">
+      <img src="https://botnet2.netlify.app/assets/logo.png" alt="Botnev Logo" class="mx-auto h-20">
+      <h1 class="text-2xl font-bold mt-2">Login</h1>
+    </div>
 
-  <h1>Login</h1>
+    <div class="space-y-3">
+      <input type="email" id="email" placeholder="Email" class="input input-bordered w-full" required>
+      <input type="password" id="password" placeholder="Password" class="input input-bordered w-full" required>
 
-  <input type="email" id="email" placeholder="Email" required /><br>
-  <input type="password" id="password" placeholder="Password" required /><br>
+      <label class="flex items-center space-x-2">
+        <input type="checkbox" id="rememberMe" class="checkbox">
+        <span>Remember Me</span>
+      </label>
 
-  <label>
-    <input type="checkbox" id="rememberMe" /> Remember Me
-  </label><br>
+      <label class="flex items-center space-x-2 text-sm">
+        <input type="checkbox" id="acceptTerms" class="checkbox">
+        <span>I agree to the <a href="/terms.html" class="text-blue-500 underline" target="_blank">Terms of Service</a></span>
+      </label>
 
-  <!-- Terms checkbox -->
-  <div class="terms">
-    <label>
-      <input type="checkbox" id="acceptTerms">
-      I agree to the
-      <a href="/terms.html" target="_blank">Terms of Service</a>
-    </label>
+      <!-- hCaptcha -->
+      <div class="h-captcha" data-sitekey="2b1cc900-c846-40e8-bf32-dbeeeec2d1c0"></div>
+
+      <button id="loginBtn" class="btn btn-primary w-full">Login</button>
+      <button id="googleBtn" class="btn btn-outline w-full">Login with Google</button>
+    </div>
+
+    <!-- Verification Section -->
+    <div id="verifySection" class="mt-4 hidden">
+      <p class="mb-2 text-sm">We sent a verification code to your email. Enter it below:</p>
+      <input type="text" id="verificationCode" placeholder="Verification code" class="input input-bordered w-full mb-2">
+      <button id="verifyBtn" class="btn btn-success w-full">Verify & Continue</button>
+    </div>
+
+    <div id="output" class="mt-2 text-red-500 text-sm"></div>
   </div>
 
-  <br>
+  <script>
+    const output = document.getElementById('output');
+    const verifySection = document.getElementById('verifySection');
+    let pendingLoginData = null;
 
-  <!-- hCaptcha widget -->
-  <div class="h-captcha" data-sitekey="2b1cc900-c846-40e8-bf32-dbeeeec2d1c0"></div><br>
-
-  <button id="loginBtn">Login</button>
-  <button id="googleBtn">Login with Google</button>
-
-  <!-- Verification code section -->
-  <div id="verifySection">
-    <p>We sent a verification code to your email. Enter it below:</p>
-    <input type="text" id="verificationCode" placeholder="Verification code" /><br>
-    <button id="verifyBtn">Verify & Continue</button>
-  </div>
-
-  <div id="output"></div>
-
-<script>
-const output = document.getElementById('output');
-const verifySection = document.getElementById('verifySection');
-let pendingLoginData = null;
-
-// Generate fingerprint
-function getFingerprint() {
-  return navigator.userAgent + navigator.language + screen.width + screen.height;
-}
-
-// Login button click
-document.getElementById('loginBtn').addEventListener('click', async () => {
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value.trim();
-  const remember_me = document.getElementById('rememberMe').checked;
-  const acceptTerms = document.getElementById('acceptTerms').checked;
-
-  if (!acceptTerms) {
-    output.textContent = "You must agree to the Terms of Service.";
-    return;
-  }
-
-  const captcha_token = hcaptcha.getResponse();
-  if (!captcha_token) {
-    output.textContent = "Please complete the CAPTCHA.";
-    return;
-  }
-
-  if (!email || !password) {
-    output.textContent = "Please enter both email and password.";
-    return;
-  }
-
-  const fingerprint = getFingerprint();
-
-  try {
-    const res = await fetch('/.netlify/functions/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        password,
-        remember_me,
-        captcha_token,
-        fingerprint,
-        accepted_terms: true
-      })
-    });
-
-    const data = await res.json();
-
-    if (data.verification_required) {
-      output.textContent = data.message || "Verification code sent to email.";
-      pendingLoginData = { email, password, remember_me, fingerprint, accepted_terms: true };
-      verifySection.style.display = 'block';
-    } else if (data.success) {
-      output.textContent = data.message || "Login successful!";
-      setTimeout(() => {
-        window.location.href = '/profile.html?email=' + encodeURIComponent(email);
-      }, 500);
-    } else if (data.redirect) {
-      window.location.href = data.redirect;
-    } else {
-      output.textContent = `Error: ${data.error || 'Unknown error'}`;
+    function getFingerprint() {
+      return navigator.userAgent + navigator.language + screen.width + screen.height;
     }
-  } catch (err) {
-    console.error(err);
-    output.textContent = 'Error: Could not reach login server';
-  }
-});
 
-// Verification button click
-document.getElementById('verifyBtn').addEventListener('click', async () => {
-  if (!pendingLoginData) return;
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const remember_me = document.getElementById('rememberMe').checked;
+      const acceptTerms = document.getElementById('acceptTerms').checked;
 
-  const verification_code = document.getElementById('verificationCode').value.trim();
-  if (!verification_code) {
-    output.textContent = "Enter the verification code.";
-    return;
-  }
+      if (!acceptTerms) { output.textContent = "You must agree to the Terms of Service."; return; }
+      const captcha_token = hcaptcha.getResponse();
+      if (!captcha_token) { output.textContent = "Please complete the CAPTCHA."; return; }
+      if (!email || !password) { output.textContent = "Please enter both email and password."; return; }
 
-  try {
-    const res = await fetch('/.netlify/functions/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...pendingLoginData,
-        verification_code
-      })
+      const fingerprint = getFingerprint();
+      try {
+        const res = await fetch('/.netlify/functions/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, remember_me, captcha_token, fingerprint, accepted_terms: true })
+        });
+        const data = await res.json();
+        if (data.verification_required) {
+          output.textContent = data.message || "Verification code sent to email.";
+          pendingLoginData = { email, password, remember_me, fingerprint, accepted_terms: true };
+          verifySection.classList.remove('hidden');
+        } else if (data.success) {
+          output.textContent = data.message || "Login successful!";
+          setTimeout(() => { window.location.href = '/profile.html?email=' + encodeURIComponent(email); }, 500);
+        } else if (data.redirect) window.location.href = data.redirect;
+        else output.textContent = `Error: ${data.error || 'Unknown error'}`;
+      } catch (err) { console.error(err); output.textContent = 'Error: Could not reach login server'; }
     });
 
-    const data = await res.json();
+    document.getElementById('verifyBtn').addEventListener('click', async () => {
+      if (!pendingLoginData) return;
+      const verification_code = document.getElementById('verificationCode').value.trim();
+      if (!verification_code) { output.textContent = "Enter the verification code."; return; }
 
-    if (data.success) {
-      output.textContent = data.message || "Verification successful!";
-      setTimeout(() => {
-        window.location.href =
-          '/profile.html?email=' + encodeURIComponent(pendingLoginData.email);
-      }, 500);
-    } else {
-      output.textContent = `Error: ${data.error || 'Verification failed'}`;
-    }
-  } catch (err) {
-    console.error(err);
-    output.textContent = 'Error: Could not reach login server';
-  }
-});
-
-// Google login
-document.getElementById('googleBtn').addEventListener('click', async () => {
-  try {
-    const res = await fetch('/.netlify/functions/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ google: true })
+      try {
+        const res = await fetch('/.netlify/functions/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...pendingLoginData, verification_code })
+        });
+        const data = await res.json();
+        if (data.success) {
+          output.textContent = data.message || "Verification successful!";
+          setTimeout(() => { window.location.href = '/profile.html?email=' + encodeURIComponent(pendingLoginData.email); }, 500);
+        } else output.textContent = `Error: ${data.error || 'Verification failed'}`;
+      } catch (err) { console.error(err); output.textContent = 'Error: Could not reach login server'; }
     });
 
-    const data = await res.json();
-    if (data.redirect) window.location.href = data.redirect;
-    else output.textContent = "Google login failed.";
-  } catch (err) {
-    console.error(err);
-    output.textContent = 'Error: Could not reach login server';
-  }
-});
-</script>
-
+    document.getElementById('googleBtn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/.netlify/functions/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ google: true }) });
+        const data = await res.json();
+        if (data.redirect) window.location.href = data.redirect;
+        else output.textContent = "Google login failed.";
+      } catch (err) { console.error(err); output.textContent = 'Error: Could not reach login server'; }
+    });
+  </script>
 </body>
 </html>
