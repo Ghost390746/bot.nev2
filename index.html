@@ -148,17 +148,42 @@
 // -----------------------
 window.addEventListener('DOMContentLoaded', () => {});
 
-// -----------------------
-// PAGE LOADING
-// -----------------------
-function loadPage(pageUrl) {
-  fetch(pageUrl)
-    .then(response => response.text())
-    .then(html => {
-      document.querySelector('.content').innerHTML = html;
-    })
-    .catch(error => console.error("Error loading page:", error));
-}
+  // -----------------------
+    // PAGE LOADING
+    // -----------------------
+    function loadPage(pageUrl) {
+      // Show loading state
+      document.querySelector('.content').innerHTML = "<div class='loading'>Loading...</div>";
+
+      // Load HTML content
+      fetch(pageUrl)
+        .then(response => response.text())
+        .then(html => {
+          // Inject the HTML content into the page
+          document.querySelector('.content').innerHTML = html;
+
+          // Manually load external CSS if necessary
+          const cssLink = document.createElement('link');
+          cssLink.rel = 'stylesheet';
+          cssLink.href = pageUrl.replace('.html', '.css'); // Assuming the CSS file has the same name as the HTML
+          document.head.appendChild(cssLink);
+
+          // Manually load external JS if necessary
+          const script = document.createElement('script');
+          script.src = pageUrl.replace('.html', '.js'); // Assuming the JS file has the same name as the HTML
+          script.onload = () => {
+            console.log(`Successfully loaded script for ${pageUrl}`);
+
+            // Reinitialize any necessary functions here
+            initializeNetlifyFunctions();  // Make sure your Netlify Functions get triggered
+          };
+          document.body.appendChild(script);
+        })
+        .catch(error => {
+          console.error("Error loading page:", error);
+          document.querySelector('.loading').innerText = 'Error loading page!';
+        });
+    }
 
 // -----------------------
 // PROFILE LOADING
@@ -332,3 +357,4 @@ loadProfile().then(loadIncoming).then(loadVoices);
 
 </body>
 </html>
+
