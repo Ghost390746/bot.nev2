@@ -40,41 +40,17 @@
 
 <style>
 /* Layout */
-body {
-  display: flex;
-  margin: 0;
-  font-family: Arial, sans-serif;
-  height: 100vh;
-}
+body { display: flex; margin: 0; font-family: Arial, sans-serif; height: 100vh; }
 
 /* Sidebar */
-#sidebar {
-  width: 250px;
-  background-color: #1e1e1e;
-  color: #fff;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow-y: auto;
-}
+#sidebar { width: 250px; background-color: #1e1e1e; color: #fff; padding: 20px; box-sizing: border-box; overflow-y: auto; }
 #sidebar ul { list-style: none; padding: 0; margin: 0; }
 #sidebar li { margin-bottom: 10px; }
-#sidebar a {
-  color: #fff;
-  text-decoration: none;
-  display: block;
-  padding: 8px 12px;
-  border-radius: 5px;
-  transition: background 0.2s;
-}
+#sidebar a { color: #fff; text-decoration: none; display: block; padding: 8px 12px; border-radius: 5px; transition: background 0.2s; }
 #sidebar a:hover { background-color: #333; }
 
 /* Main content */
-#mainContent {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: 20px;
-  background: #f9fafc;
-}
+#mainContent { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f9fafc; }
 
 /* Profile header */
 .profile-header { display:flex; align-items:center; gap:15px; margin-bottom:20px; }
@@ -98,11 +74,7 @@ button:hover { background:#0056b3; }
 #incomingRequests div button { margin-left:5px; padding:3px 8px; }
 
 /* iframe */
-#iframeContainer {
-  margin-top:20px;
-  height:500px;
-  border:1px solid #ccc;
-}
+#iframeContainer { margin-top:20px; height:500px; border:1px solid #ccc; }
 
 /* Chat bubble */
 #chatBubble {
@@ -178,30 +150,41 @@ button:hover { background:#0056b3; }
   <div id="chatBadge">!</div>
 </div>
 
+<!-- Fullscreen iframe overlay -->
+<div id="iframeOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:10000;">
+  <button id="closeIframe" style="position:absolute; top:20px; right:20px; z-index:10001; padding:10px 15px; font-size:16px; border:none; background:red; color:white; cursor:pointer; border-radius:5px;">X</button>
+  <iframe id="overlayFrame" src="" style="width:100%; height:100%; border:none;"></iframe>
+</div>
+
 <script>
-// Sidebar links load into iframe
+// -----------------------
+// SIDEBAR OVERLAY
+// -----------------------
 const links = document.querySelectorAll('#sidebar a');
-const iframe = document.getElementById('content-frame');
+const overlay = document.getElementById('iframeOverlay');
+const overlayFrame = document.getElementById('overlayFrame');
+const closeBtn = document.getElementById('closeIframe');
+
 links.forEach(link => {
   link.addEventListener('click', e => {
     e.preventDefault();
-    iframe.src = link.href;
+    overlayFrame.src = link.href;
+    overlay.style.display = 'block';
   });
 });
 
-// Open chat
-function openChat(){ window.location.href='/chat.html'; }
-</script>
-<script>
-// -----------------------
-// SHOW TEST ACCOUNT ALERT
-// -----------------------
-window.addEventListener('DOMContentLoaded', () => {
- 
+closeBtn.addEventListener('click', () => {
+  overlayFrame.src = '';
+  overlay.style.display = 'none';
 });
 
 // -----------------------
-// LOAD USER PROFILE (via settings.js) + editable settings UI
+// CHAT NAVIGATION
+// -----------------------
+function openChat() { window.location.href = '/chat.html'; }
+
+// -----------------------
+// LOAD USER PROFILE
 // -----------------------
 async function loadProfile() {
   try {
@@ -210,96 +193,66 @@ async function loadProfile() {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include'
     });
-
     const result = await res.json();
     if (!result.success) throw new Error(result.error || 'Failed to fetch user');
 
     const user = result.user || {};
     window.userEmail = user.email;
-
-    const online = !!user.online; // use online directly from backend
+    const online = !!user.online;
     const avatarUrl = user.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(user.email || 'user')}.svg`;
 
-    // Display profile + settings UI
     document.getElementById('profile').innerHTML = `
-      <img id="avatarPreview" src="${avatarUrl}" alt="Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;" />
+      <img id="avatarPreview" src="${avatarUrl}" alt="Profile" />
       <span>${user.username || user.email || 'User'} - 
         <span id="statusIndicator" class="${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
       </span>
       <div style="margin-top:10px;">
-        <label>
-          Change Avatar URL:
-          <input type="text" id="avatarInput" placeholder="New avatar URL" style="width:200px;" />
-        </label>
-        <button id="updateAvatarBtn" style="margin-left:5px;">Update Avatar</button>
+        <label>Change Avatar URL: <input type="text" id="avatarInput" placeholder="New avatar URL" /></label>
+        <button id="updateAvatarBtn">Update Avatar</button>
       </div>
       <div style="margin-top:5px;">
-        <label>
-          Online Status:
+        <label>Online Status: 
           <select id="statusSelect">
             <option value="true" ${online ? 'selected' : ''}>Online</option>
             <option value="false" ${!online ? 'selected' : ''}>Offline</option>
           </select>
         </label>
-        <button id="updateStatusBtn" style="margin-left:5px;">Update Status</button>
+        <button id="updateStatusBtn">Update Status</button>
       </div>
     `;
-
     document.getElementById('chatUsername').textContent = user.username || user.email || 'Chat';
 
-    // Event listeners for updating settings remain unchanged
+    // Update avatar
     document.getElementById('updateAvatarBtn').addEventListener('click', async () => {
       const newAvatar = document.getElementById('avatarInput').value.trim();
       if (!newAvatar) return alert('Please enter a valid URL');
-      try {
-        const res = await fetch('/.netlify/functions/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ avatar_url: newAvatar })
-        });
-        const data = await res.json();
-        if (data.success) {
-          document.getElementById('avatarPreview').src = newAvatar;
-          alert('Avatar updated successfully!');
-        } else {
-          alert('Failed to update avatar: ' + data.error);
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Error updating avatar');
-      }
+      const res = await fetch('/.netlify/functions/settings', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ avatar_url: newAvatar })
+      });
+      const data = await res.json();
+      if(data.success){ document.getElementById('avatarPreview').src = newAvatar; alert('Avatar updated!'); }
+      else alert('Failed: '+data.error);
     });
 
+    // Update status
     document.getElementById('updateStatusBtn').addEventListener('click', async () => {
-      const newStatus = document.getElementById('statusSelect').value === 'true';
-      try {
-        const res = await fetch('/.netlify/functions/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ online: newStatus })
-        });
-        const data = await res.json();
-        if (data.success) {
-          const statusEl = document.getElementById('statusIndicator');
-          statusEl.textContent = newStatus ? 'Online' : 'Offline';
-          statusEl.className = newStatus ? 'online' : 'offline';
-          alert('Status updated successfully!');
-        } else {
-          alert('Failed to update status: ' + data.error);
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Error updating status');
-      }
+      const newStatus = document.getElementById('statusSelect').value==='true';
+      const res = await fetch('/.netlify/functions/settings', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ online: newStatus })
+      });
+      const data = await res.json();
+      if(data.success){
+        const s = document.getElementById('statusIndicator');
+        s.textContent = newStatus?'Online':'Offline';
+        s.className = newStatus?'online':'offline';
+        alert('Status updated!');
+      } else alert('Failed: '+data.error);
     });
 
-  } catch (e) {
-    console.error('Failed to load profile', e);
-  }
+  } catch(e){ console.error(e); }
 }
-
 
 // -----------------------
 // FRIEND REQUESTS
@@ -307,9 +260,7 @@ async function loadProfile() {
 async function loadIncoming() {
   try {
     const res = await fetch('/.netlify/functions/friend-requests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // send cookie
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
       body: JSON.stringify({ action:'list', user_email: window.userEmail })
     });
     const data = await res.json();
@@ -326,27 +277,23 @@ async function loadIncoming() {
 }
 
 window.respond = async (id,status) => {
-  const res = await fetch('/.netlify/functions/friend-requests', {
-    method: 'POST',
-    headers:{'Content-Type':'application/json'},
-    credentials: 'include',
+  const res = await fetch('/.netlify/functions/friend-requests',{
+    method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
     body: JSON.stringify({ action:'respond', request_id:id, status })
   });
   const data = await res.json();
-  alert(data.success ? `Request ${status}` : data.error);
+  alert(data.success?`Request ${status}`:data.error);
   loadIncoming();
-}
+};
 
-document.getElementById('sendRequestBtn').addEventListener('click', async () => {
+document.getElementById('sendRequestBtn').addEventListener('click', async ()=>{
   const receiver_email = document.getElementById('friendEmail').value;
-  const res = await fetch('/.netlify/functions/friend-requests', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    credentials: 'include',
+  const res = await fetch('/.netlify/functions/friend-requests',{
+    method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
     body: JSON.stringify({ action:'send', sender_email: window.userEmail, receiver_email })
   });
   const data = await res.json();
-  alert(data.success ? 'Request sent!' : data.error);
+  alert(data.success?'Request sent!':data.error);
   loadIncoming();
 });
 
@@ -360,80 +307,40 @@ const fbxSelect = document.getElementById('fbxSelect');
 
 async function loadVoices() {
   try {
-    const res = await fetch('/.netlify/functions/get-voices', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials: 'include'
-    });
+    const res = await fetch('/.netlify/functions/get-voices',{ method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include' });
     const voices = await res.json();
     voiceSelect.innerHTML = '<option value="">Select Voice</option>';
-    voices.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = `${v.name} (${v.lang})`;
-      voiceSelect.appendChild(opt);
-    });
-  } catch(err) {
-    voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
-    console.error(err);
-  }
+    voices.forEach(v=>{ const opt=document.createElement('option'); opt.value=v.id; opt.textContent=`${v.name} (${v.lang})`; voiceSelect.appendChild(opt); });
+  } catch(e){ voiceSelect.innerHTML='<option value="">Failed to load voices</option>'; console.error(e);}
 }
 
-const fbxModels = [
-  {id:'model1',name:'Humanoid Default'},
-  {id:'model2',name:'Robot Model'}
-];
-fbxModels.forEach(m => {
-  const opt = document.createElement('option');
-  opt.value = m.id;
-  opt.textContent = m.name;
-  fbxSelect.appendChild(opt);
-});
+const fbxModels = [{id:'model1',name:'Humanoid Default'},{id:'model2',name:'Robot Model'}];
+fbxModels.forEach(m=>{ const opt=document.createElement('option'); opt.value=m.id; opt.textContent=m.name; fbxSelect.appendChild(opt); });
 
-form.addEventListener('submit', async e => {
+form.addEventListener('submit', async e=>{
   e.preventDefault();
-  const name = document.getElementById('botName').value.trim();
-  const description = document.getElementById('description').value.trim();
-  const voice_id = voiceSelect.value;
-  const fbx_model_id = fbxSelect.value;
-  const paid_link = document.getElementById('gumroadLink').value.trim();
+  const name=document.getElementById('botName').value.trim();
+  const description=document.getElementById('description').value.trim();
+  const voice_id=voiceSelect.value;
+  const fbx_model_id=fbxSelect.value;
+  const paid_link=document.getElementById('gumroadLink').value.trim();
 
-  if(!name || !description || !voice_id || !fbx_model_id){
-    output.textContent='Please fill all required fields.'; 
-    output.className='output error'; 
-    return;
-  }
+  if(!name||!description||!voice_id||!fbx_model_id){ output.textContent='Please fill all required fields.'; output.className='output error'; return; }
+  output.textContent='Creating bot...'; output.className='output';
 
-  output.textContent='Creating bot...'; 
-  output.className='output';
-
-  try {
-    const res = await fetch('/.netlify/functions/overpoweredbot', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials: 'include',
+  try{
+    const res = await fetch('/.netlify/functions/overpoweredbot',{
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
       body: JSON.stringify({ name, description, voice_id, fbx_model_id, paid_link })
     });
     const data = await res.json();
-    if(!res.ok || data.error){ 
-      output.textContent=`Error: ${data.error||'Unknown'}`; 
-      output.className='output error'; 
-      return; 
-    }
+    if(!res.ok||data.error){ output.textContent=`Error: ${data.error||'Unknown'}`; output.className='output error'; return; }
     output.innerHTML=`<strong>Bot Created Successfully!</strong><br>ID/Hash: ${data.id||'N/A'}<br>API Key: ${data.apiKey||'Check Backend'}<br>File: bot.js<br><br>
       <a href="/explore.html">🔍 Explore</a> | <a href="/index.html">🏠 Home</a>`;
-    output.className='output success'; 
+    output.className='output success';
     form.reset();
-  } catch(err){
-    output.textContent='Failed to create bot.'; 
-    output.className='output error';
-  }
+  }catch(e){ output.textContent='Failed to create bot.'; output.className='output error'; }
 });
-
-// -----------------------
-// CHAT NAV
-// -----------------------
-function openChat() { window.location.href = '/chat.html'; }
 
 // -----------------------
 // INITIAL LOAD
@@ -442,7 +349,3 @@ loadProfile().then(loadIncoming).then(loadVoices);
 </script>
 </body>
 </html>
-
-
-
-
