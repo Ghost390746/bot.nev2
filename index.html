@@ -151,10 +151,27 @@ button:hover { background:#0056b3; }
 </div>
 
 <!-- Fullscreen iframe overlay -->
+<!-- Fullscreen iframe overlay -->
 <div id="iframeOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:10000;">
-  <button id="closeIframe" style="position:absolute; top:20px; right:20px; z-index:10001; padding:10px 15px; font-size:16px; border:none; background:red; color:white; cursor:pointer; border-radius:5px;">X</button>
+  <button id="closeIframe" style="
+      position:absolute; 
+      top:10px; 
+      right:10px; 
+      width:30px; 
+      height:30px; 
+      font-size:20px; 
+      line-height:30px; 
+      padding:0; 
+      border:none; 
+      background:rgba(255,255,255,0.2); 
+      color:white; 
+      cursor:pointer; 
+      border-radius:50%;
+      text-align:center;
+  ">×</button>
   <iframe id="overlayFrame" src="" style="width:100%; height:100%; border:none;"></iframe>
 </div>
+
 
 <script>
 // -----------------------
@@ -349,3 +366,4 @@ loadProfile().then(loadIncoming).then(loadVoices);
 </script>
 </body>
 </html>
+
