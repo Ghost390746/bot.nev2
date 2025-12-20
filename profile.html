@@ -11,17 +11,8 @@
 
 <style>
 body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
-
-/* Top logo header */
-#siteHeader {
-  text-align: center;
-  margin-bottom: 20px;
-}
-#topLogo {
-  max-height: 80px;
-  cursor: pointer;
-}
-
+#siteHeader { text-align: center; margin-bottom: 20px; }
+#topLogo { max-height: 80px; cursor: pointer; }
 .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; }
 .step { display: none; }
 .step.active { display: block; }
@@ -36,7 +27,6 @@ button { padding: 10px 15px; margin-top: 10px; }
 </head>
 <body>
 
-<!-- Top Logo -->
 <header id="siteHeader">
   <a href="/index.html">
     <img src="https://botnet2.netlify.app/assets/logo.png" alt="Botnev Logo" id="topLogo" />
@@ -46,15 +36,24 @@ button { padding: 10px 15px; margin-top: 10px; }
 <div class="container">
 <h1>Create Your Profile</h1>
 
-<!-- Step 1 -->
-<div class="step active" id="step-1">
+<!-- Step 0: Email Verification -->
+<div class="step active" id="step-0">
+  <h2>Step 0: Verify Your Email</h2>
+  <input type="email" id="email" placeholder="Enter your email" />
+  <input type="text" id="verification-code" placeholder="Enter verification code" />
+  <button onclick="sendVerificationCode()">Send Code</button>
+  <button onclick="verifyCode()">Verify & Continue</button>
+</div>
+
+<!-- Step 1: Username & Bio -->
+<div class="step" id="step-1">
   <h2>Step 1: Username & Bio</h2>
   <input type="text" id="username" placeholder="Username" />
   <textarea id="bio" placeholder="Your bio"></textarea>
   <button onclick="nextStep()">Next</button>
 </div>
 
-<!-- Step 2 -->
+<!-- Step 2: Profile Picture -->
 <div class="step" id="step-2">
   <h2>Step 2: Profile Picture</h2>
   <input type="file" id="profile-picture" accept="image/*" />
@@ -62,7 +61,7 @@ button { padding: 10px 15px; margin-top: 10px; }
   <button onclick="nextStep()">Next</button>
 </div>
 
-<!-- Step 3 -->
+<!-- Step 3: FBX Avatars -->
 <div class="step" id="step-3">
   <h2>Step 3: Pick FBX Avatars (max 3)</h2>
   <div class="fbx-options" id="fbx-options">
@@ -74,7 +73,7 @@ button { padding: 10px 15px; margin-top: 10px; }
   <button onclick="nextStep()">Next</button>
 </div>
 
-<!-- Step 4 -->
+<!-- Step 4: Finish -->
 <div class="step" id="step-4">
   <h2>Step 4: Finish</h2>
   <button onclick="finishProfile()">Complete Profile</button>
@@ -84,8 +83,9 @@ button { padding: 10px 15px; margin-top: 10px; }
 </div>
 
 <script>
-let currentStep = 1;
+let currentStep = 0;
 let fbxSelected = [];
+let frontendFingerprint = crypto.randomUUID(); // optional for fingerprinting
 
 // FBX selection
 document.querySelectorAll('.fbx-options div').forEach(el => {
@@ -100,7 +100,6 @@ document.querySelectorAll('.fbx-options div').forEach(el => {
   });
 });
 
-// Show active step
 function showStep(step){
   document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
   const stepEl = document.getElementById(`step-${step}`);
@@ -109,17 +108,43 @@ function showStep(step){
 
 // Send step data to backend
 async function sendStepData(step,data){
+  data.step = step;
+  data.frontendFingerprint = frontendFingerprint;
   try {
     const res = await fetch('/.netlify/functions/profileCreation',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      credentials: 'include', // IMPORTANT: send cookies
-      body:JSON.stringify({ step, ...data })
+      credentials: 'include',
+      body:JSON.stringify(data)
     });
     return await res.json();
   } catch(err){
     console.error('Error sending step data:', err);
     return { success:false, error:'Failed to connect to server' };
+  }
+}
+
+// Step 0: Send verification code
+async function sendVerificationCode(){
+  const email = document.getElementById('email').value.trim();
+  if(!email){ alert("Enter your email"); return; }
+
+  const response = await sendStepData(0,{ email });
+  document.getElementById('message').innerText = response.message || response.error;
+}
+
+// Step 0: Verify code
+async function verifyCode(){
+  const email = document.getElementById('email').value.trim();
+  const code = document.getElementById('verification-code').value.trim();
+  if(!email || !code){ alert("Enter email and code"); return; }
+
+  const response = await sendStepData(0,{ email, verification_code: code });
+  document.getElementById('message').innerText = response.message || response.error;
+
+  if(response.success){
+    currentStep = 1;
+    showStep(currentStep);
   }
 }
 
@@ -144,8 +169,6 @@ async function nextStep(){
       reader.onerror = () => reject("Failed to read file");
       reader.readAsDataURL(file);
     });
-
-    // Show preview
     document.getElementById('profile-preview').src = data.profile_picture;
 
   } else if(currentStep===3){
