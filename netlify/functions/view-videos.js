@@ -18,18 +18,10 @@ export const handler = async () => {
 
     const videosWithUser = await Promise.all(
       files.map(async (file) => {
-        // Create signed URL for the video
-        const { data: signedUrlData, error: signedUrlError } = await supabase
-          .storage
-          .from('videos')
-          .createSignedUrl(file.name, 3600); // 1 hour expiry
-
-        if (signedUrlError) return null;
-
-        // Get video metadata from the videos table
+        // Get video metadata from videos table
         const { data: videoRecord, error: videoError } = await supabase
           .from('videos')
-          .select('user_id, created_at')
+          .select('id, user_id, created_at')
           .eq('video_url', file.name)
           .maybeSingle();
 
@@ -44,10 +36,19 @@ export const handler = async () => {
 
         const user = userData ? { id: userData.id, email: userData.email } : null;
 
+        // Create signed URL for the video
+        const { data: signedUrlData, error: signedUrlError } = await supabase
+          .storage
+          .from('videos')
+          .createSignedUrl(file.name, 3600); // 1 hour expiry
+
+        if (signedUrlError) return null;
+
         return {
+          id: videoRecord.id,
           name: file.name,
           size: file.size,
-          uploaded_at: videoRecord.created_at, // use created_at from videos table
+          uploaded_at: videoRecord.created_at,
           videoUrl: signedUrlData.signedUrl,
           user
         };
