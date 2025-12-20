@@ -37,15 +37,9 @@
     document.getElementById('uploadBtn').addEventListener('click', async () => {
       const fileInput = document.getElementById('videoFile');
       const file = fileInput.files[0];
-
-      if (!file) {
-        alert('Please select a video file.');
-        return;
-      }
-
+      if (!file) { alert('Please select a video file.'); return; }
       if (file.type !== 'video/mp4' && !file.name.toLowerCase().endsWith('.mp4')) {
-        alert('Only MP4 files are allowed.');
-        return;
+        alert('Only MP4 files are allowed.'); return;
       }
 
       const progressBar = document.getElementById('progressBar');
@@ -117,8 +111,17 @@
             <p>User: ${video.user ? video.user.email : 'Unknown'}</p>
             <p>Uploaded: ${video.uploaded_at ? new Date(video.uploaded_at).toLocaleString() : 'Unknown'}</p>
             <video controls src="${video.videoUrl}"></video>
+            <button class="shareBtn">Share Video</button>
           `;
           videosList.appendChild(div);
+
+          // Add share functionality
+          const shareBtn = div.querySelector('.shareBtn');
+          shareBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(video.videoUrl)
+              .then(() => alert('Video URL copied to clipboard!'))
+              .catch(() => alert('Failed to copy URL.'));
+          });
         });
       } catch (err) {
         console.error(err);
