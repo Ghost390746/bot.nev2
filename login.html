@@ -3,21 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <title>Login</title>
+
   <!-- hCaptcha script -->
   <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+
   <style>
     #verifySection { display: none; margin-top: 1em; }
     #output { margin-top: 1em; color: red; }
+    .terms {
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
+
   <h1>Login</h1>
 
   <input type="email" id="email" placeholder="Email" required /><br>
   <input type="password" id="password" placeholder="Password" required /><br>
+
   <label>
     <input type="checkbox" id="rememberMe" /> Remember Me
   </label><br>
+
+  <!-- Terms checkbox -->
+  <div class="terms">
+    <label>
+      <input type="checkbox" id="acceptTerms">
+      I agree to the
+      <a href="/terms.html" target="_blank">Terms of Service</a>
+    </label>
+  </div>
+
+  <br>
 
   <!-- hCaptcha widget -->
   <div class="h-captcha" data-sitekey="2b1cc900-c846-40e8-bf32-dbeeeec2d1c0"></div><br>
@@ -49,12 +68,19 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
   const remember_me = document.getElementById('rememberMe').checked;
+  const acceptTerms = document.getElementById('acceptTerms').checked;
+
+  if (!acceptTerms) {
+    output.textContent = "You must agree to the Terms of Service.";
+    return;
+  }
 
   const captcha_token = hcaptcha.getResponse();
   if (!captcha_token) {
     output.textContent = "Please complete the CAPTCHA.";
     return;
   }
+
   if (!email || !password) {
     output.textContent = "Please enter both email and password.";
     return;
@@ -65,19 +91,28 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   try {
     const res = await fetch('/.netlify/functions/login', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password, remember_me, captcha_token, fingerprint })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        remember_me,
+        captcha_token,
+        fingerprint,
+        accepted_terms: true
+      })
     });
 
     const data = await res.json();
 
     if (data.verification_required) {
       output.textContent = data.message || "Verification code sent to email.";
-      pendingLoginData = { email, password, remember_me, fingerprint };
+      pendingLoginData = { email, password, remember_me, fingerprint, accepted_terms: true };
       verifySection.style.display = 'block';
     } else if (data.success) {
       output.textContent = data.message || "Login successful!";
-      setTimeout(() => { window.location.href = '/profile.html?email=' + encodeURIComponent(email); }, 500);
+      setTimeout(() => {
+        window.location.href = '/profile.html?email=' + encodeURIComponent(email);
+      }, 500);
     } else if (data.redirect) {
       window.location.href = data.redirect;
     } else {
@@ -99,20 +134,24 @@ document.getElementById('verifyBtn').addEventListener('click', async () => {
     return;
   }
 
-  const loginData = { ...pendingLoginData, verification_code };
-
   try {
     const res = await fetch('/.netlify/functions/login', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(loginData)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...pendingLoginData,
+        verification_code
+      })
     });
 
     const data = await res.json();
 
     if (data.success) {
-      output.textContent = data.message || "Verification successful, login complete!";
-      setTimeout(() => { window.location.href = '/profile.html?email=' + encodeURIComponent(pendingLoginData.email); }, 500);
+      output.textContent = data.message || "Verification successful!";
+      setTimeout(() => {
+        window.location.href =
+          '/profile.html?email=' + encodeURIComponent(pendingLoginData.email);
+      }, 500);
     } else {
       output.textContent = `Error: ${data.error || 'Verification failed'}`;
     }
@@ -127,9 +166,10 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
   try {
     const res = await fetch('/.netlify/functions/login', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ google: true })
     });
+
     const data = await res.json();
     if (data.redirect) window.location.href = data.redirect;
     else output.textContent = "Google login failed.";
