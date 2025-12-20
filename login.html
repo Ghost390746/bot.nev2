@@ -4,19 +4,46 @@
   <meta charset="UTF-8">
   <title>Login</title>
 
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
+
   <!-- hCaptcha script -->
   <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 
   <style>
     #verifySection { display: none; margin-top: 1em; }
     #output { margin-top: 1em; color: red; }
+
     .terms {
       margin-top: 10px;
       font-size: 0.9em;
     }
+
+    /* Optional basic header styling */
+    #siteHeader {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #topLogo {
+      max-height: 80px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Top Logo -->
+  <header id="siteHeader">
+    <a href="/index.html">
+      <img
+        src="https://botnet2.netlify.app/assets/logo.png"
+        alt="Botnev Logo"
+        id="topLogo"
+      />
+    </a>
+  </header>
 
   <h1>Login</h1>
 
