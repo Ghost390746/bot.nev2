@@ -2,9 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Create Profile</title>
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
+<link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
+
 <style>
 body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+
+/* Top logo header */
+#siteHeader {
+  text-align: center;
+  margin-bottom: 20px;
+}
+#topLogo {
+  max-height: 80px;
+  cursor: pointer;
+}
+
 .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; }
 .step { display: none; }
 .step.active { display: block; }
@@ -18,6 +35,14 @@ button { padding: 10px 15px; margin-top: 10px; }
 </style>
 </head>
 <body>
+
+<!-- Top Logo -->
+<header id="siteHeader">
+  <a href="/index.html">
+    <img src="https://botnet2.netlify.app/assets/logo.png" alt="Botnev Logo" id="topLogo" />
+  </a>
+</header>
+
 <div class="container">
 <h1>Create Your Profile</h1>
 
