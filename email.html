@@ -95,6 +95,14 @@
       display: inline-block;
       width: 80px;
     }
+
+    /* Avatar preview next to select */
+    #avatarPreview {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
@@ -115,6 +123,7 @@
     <select id="toUser">
       <option value="">Loading users...</option>
     </select>
+    <img id="avatarPreview" src="" alt="Avatar Preview" />
 
     <label for="subject">Subject:</label>
     <input type="text" id="subject" maxlength="200">
@@ -130,27 +139,21 @@
   </main>
 
 <script>
-// --------------------
-// DOM references
-// --------------------
 const toUserSelect = document.getElementById('toUser');
+const avatarPreview = document.getElementById('avatarPreview');
 const subjectInput = document.getElementById('subject');
 const bodyInput = document.getElementById('body');
 const sendBtn = document.getElementById('sendBtn');
 const output = document.getElementById('output');
 const inboxDiv = document.getElementById('inbox');
 
-// --------------------
 // Sanitize input
-// --------------------
 function sanitize(str) {
   if (!str) return '';
   return str.replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;');
 }
 
-// --------------------
-// Load verified users
-// --------------------
+// Load verified users with online status & avatar
 async function loadUsers() {
   try {
     const res = await fetch('/.netlify/functions/getVerifiedUsers', {
@@ -162,10 +165,13 @@ async function loadUsers() {
     if (!data.success) throw new Error('Failed to load users');
 
     toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
+
     data.users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.email;
-      opt.textContent = u.email;
+      const statusEmoji = u.online ? '🟢' : '⚪';
+      opt.textContent = `${statusEmoji} ${u.username || u.email}`;
+      opt.dataset.avatar = u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.email||'user')}.svg`;
       toUserSelect.appendChild(opt);
     });
   } catch (err) {
@@ -174,9 +180,13 @@ async function loadUsers() {
   }
 }
 
-// --------------------
+// Show avatar when a user is selected
+toUserSelect.addEventListener('change', () => {
+  const selected = toUserSelect.selectedOptions[0];
+  avatarPreview.src = selected?.dataset.avatar || '';
+});
+
 // Load inbox
-// --------------------
 async function loadInbox() {
   try {
     const res = await fetch('/.netlify/functions/getEmails', {
@@ -189,7 +199,6 @@ async function loadInbox() {
       inboxDiv.textContent = 'Failed to load inbox';
       return;
     }
-
     if (!data.emails.length) {
       inboxDiv.textContent = 'No emails';
       return;
@@ -213,9 +222,7 @@ async function loadInbox() {
   }
 }
 
-// --------------------
 // Send email
-// --------------------
 sendBtn.addEventListener('click', async () => {
   const to_user = toUserSelect.value;
   const subject = subjectInput.value.trim();
@@ -252,9 +259,7 @@ sendBtn.addEventListener('click', async () => {
   }
 });
 
-// --------------------
 // Initialize
-// --------------------
 loadUsers();
 loadInbox();
 </script>
