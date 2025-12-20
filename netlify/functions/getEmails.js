@@ -1,29 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import cookie from 'cookie';
-import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
-
-// Decrypt AES-GCM session token
-function decryptSessionToken(encryptedToken) {
-  try {
-    const [ivHex, tagHex, encryptedHex] = encryptedToken.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const tag = Buffer.from(tagHex, 'hex');
-    const encrypted = Buffer.from(encryptedHex, 'hex');
-    const key = crypto.scryptSync(process.env.SESSION_SECRET, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
-    decipher.setAuthTag(tag);
-    const decrypted = decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8');
-    return decrypted;
-  } catch (e) {
-    return null;
-  }
-}
 
 // Generate device fingerprint like login
 function getDeviceFingerprint(headers, frontendFingerprint) {
@@ -41,13 +23,7 @@ export const handler = async (event) => {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated: missing or invalid session token' }) };
     }
 
-    // Decrypt token
-    const session_token = decryptSessionToken(rawToken);
-    if (!session_token) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session token' }) };
-    }
-
-    // Verify session in DB
+    // Query Supabase to verify session
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email, expires_at, fingerprint')
@@ -71,17 +47,41 @@ export const handler = async (event) => {
 
     const user_email = sessionData.user_email;
 
-    // Fetch emails
+    // Fetch emails and sender details (avatar_url, online status) from the 'users' table
     const { data: emails, error: emailsError } = await supabase
       .from('emails')
-      .select('id, subject, from_user, body, created_at')
+      .select('id, subject, from_user, body, created_at, from_user:users!emails_from_user_fkey (avatar_url, last_online)')
       .eq('to_user', user_email)
       .order('created_at', { ascending: false });
 
     if (emailsError) throw emailsError;
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, emails }) };
+    // Map emails to include sender's avatar_url and online status
+    const mappedEmails = emails.map(e => {
+      const sender = e.from_user || {};
+      const lastOnline = new Date(sender.last_online || 0);
+      const senderOnline = (Date.now() - lastOnline.getTime()) < 5 * 60 * 1000; // 5 minutes
 
+      return {
+        id: e.id,
+        subject: e.subject,
+        body: e.body,
+        created_at: e.created_at,
+        from: {
+          email: e.from_user,
+          avatar_url: sender.avatar_url || null, // Use the avatar_url from users table
+          online: senderOnline
+        }
+      };
+    });
+
+    return { 
+      statusCode: 200, 
+      body: JSON.stringify({
+        success: true,
+        emails: mappedEmails
+      }) 
+    };
   } catch (err) {
     console.error('getEmails error:', err);
     return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }) };
