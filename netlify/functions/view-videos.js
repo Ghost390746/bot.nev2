@@ -11,7 +11,7 @@ export const handler = async () => {
     const { data: files, error: listError } = await supabase
       .storage
       .from('videos')
-      .list('', { limit: 100, offset: 0 });
+      .list('', { limit: 100, offset: 0, sortBy: { column: 'created_at', order: 'desc' } });
 
     if (listError) return { statusCode: 500, body: listError.message };
     if (!files || files.length === 0) return { statusCode: 200, body: JSON.stringify([]) };
@@ -22,33 +22,32 @@ export const handler = async () => {
         const { data: signedUrlData, error: signedUrlError } = await supabase
           .storage
           .from('videos')
-          .createSignedUrl(file.name, 3600); // 1 hour expiry
+          .createSignedUrl(file.name, 3600); // 1 hour
 
         if (signedUrlError) return null;
 
-        // Try to get video metadata from videos table
+        // Get video metadata from videos table
         const { data: videoRecord } = await supabase
           .from('videos')
           .select('user_id')
           .eq('video_url', file.name)
           .maybeSingle();
 
-        let user = null;
-        if (videoRecord) {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('id, email')
-            .eq('id', videoRecord.user_id)
-            .maybeSingle();
-          if (userData) user = { id: userData.id, email: userData.email };
-        }
+        if (!videoRecord) return null;
+
+        // Fetch user info
+        const { data: user } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('id', videoRecord.user_id)
+          .maybeSingle();
 
         return {
           name: file.name,
           size: file.size,
           updated_at: file.updated_at,
           videoUrl: signedUrlData.signedUrl,
-          user
+          user: user ? { id: user.id, email: user.email } : null
         };
       })
     );
