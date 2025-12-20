@@ -23,17 +23,20 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "WebPage",
-  "name": "Friend Requests & Create Bot — Botnev",
+  "@type": "Organization",
+  "name": "Botnev",
   "url": "https://botnet2.netlify.app/create-bot.html",
-  "description": "Manage friend requests and create your own AI bot on Botnev! Customize your bot, select voices, and models.",
-  "publisher": {
-    "@type": "Organization",
-    "name": "Botnev",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://botnet2.netlify.app/assets/logo.png"
-    }
+  "logo": {
+    "@type": "ImageObject",
+    "url": "https://botnet2.netlify.app/assets/logo.png",
+    "width": 200,
+    "height": 200
+  },
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer service",
+    "areaServed": "US",
+    "availableLanguage": "English"
   }
 }
 </script>
@@ -367,5 +370,6 @@ loadProfile().then(loadIncoming).then(loadVoices);
 </script>
 </body>
 </html>
+
 
 
