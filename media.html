@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Media Gallery</title>
+  <title>Media Streaming Gallery</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f4f4f4;
+      background-color: #121212;
+      color: #fff;
       margin: 0;
       padding: 20px;
     }
@@ -15,73 +16,91 @@
     h1, h2 {
       text-align: center;
       margin-bottom: 20px;
+      color: #fff;
     }
 
     .media-gallery {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      justify-content: center;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 30px;
+      justify-items: center;
+      padding: 10px;
     }
 
     .media-card {
-      background: white;
-      border-radius: 10px;
-      padding: 10px;
-      width: 220px;
+      background: #1f1f1f;
+      border-radius: 12px;
+      overflow: hidden;
+      width: 100%;
+      max-width: 300px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      transition: transform 0.2s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      transition: transform 0.3s, box-shadow 0.3s;
     }
 
     .media-card:hover {
       transform: scale(1.05);
+      box-shadow: 0 6px 30px rgba(0,0,0,0.7);
     }
 
     .media-card img.logo {
-      width: 100px;
-      height: 100px;
-      object-fit: contain;
-      margin-bottom: 10px;
+      width: 100%;
+      object-fit: cover;
     }
 
     .media-card span {
       font-weight: bold;
-      margin-bottom: 10px;
+      margin: 12px 0 8px;
       text-align: center;
     }
 
     audio, video {
       width: 100%;
-      border-radius: 6px;
-      margin-bottom: 10px;
+      border-radius: 0 0 12px 12px;
+      margin-bottom: 0;
+      background-color: #000;
     }
 
     a.download-link {
       text-decoration: none;
-      color: white;
+      color: #fff;
       background-color: #0077cc;
       padding: 6px 12px;
-      border-radius: 5px;
+      border-radius: 6px;
       font-size: 14px;
+      margin: 8px 0;
+      display: inline-block;
+      transition: background-color 0.2s;
+    }
+
+    a.download-link:hover {
+      background-color: #005fa3;
     }
 
     .tubi {
       text-align: center;
-      margin: 40px 0;
+      margin: 50px 0;
     }
 
     .tubi iframe {
       width: 80%;
-      height: 400px;
-      border-radius: 10px;
+      max-width: 900px;
+      height: 450px;
+      border-radius: 12px;
+      border: none;
+    }
+
+    @media(max-width: 600px){
+      .media-gallery {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Media Gallery</h1>
+  <h1>Media Streaming Gallery</h1>
 
   <div class="media-gallery" id="media-gallery">
     <p>Loading media...</p>
@@ -92,14 +111,13 @@
     <iframe 
       src="https://www.youtube.com/embed/2YCBmL87iwY" 
       title="Angry Birds Movie Trailer" 
-      frameborder="0" 
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
       allowfullscreen>
     </iframe>
   </div>
 
   <script>
-    const DEFAULT_COVER = 'assets/default.png'; // placeholder if no matching PNG exists
+    const DEFAULT_COVER = 'assets/default.png';
 
     async function fetchMedia() {
       try {
@@ -119,8 +137,9 @@
           const card = document.createElement('div');
           card.className = 'media-card';
 
-          // Use cover art if available; otherwise use default
           const coverSrc = file.cover_url || DEFAULT_COVER;
+
+          // Large cover image
           const logo = document.createElement('img');
           logo.src = coverSrc;
           logo.alt = file.name;
@@ -140,6 +159,7 @@
             mediaElement = document.createElement('video');
             mediaElement.controls = true;
             mediaElement.src = file.download_url;
+            mediaElement.poster = coverSrc;
           }
 
           if (mediaElement) card.appendChild(mediaElement);
