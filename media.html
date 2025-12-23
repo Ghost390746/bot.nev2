@@ -3,63 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Media List & Tubi Movie</title>
+  <title>Media Gallery</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 20px;
       background-color: #f4f4f4;
+      margin: 0;
+      padding: 20px;
     }
+
     h1, h2 {
       text-align: center;
+      margin-bottom: 20px;
     }
-    ul {
-      list-style: none;
-      padding: 0;
-    }
-    li {
-      background: white;
-      margin: 10px 0;
-      padding: 10px;
-      border-radius: 8px;
+
+    .media-gallery {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
       flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
     }
-    a {
-      text-decoration: none;
-      color: #0077cc;
-      margin-left: 10px;
+
+    .media-card {
+      background: white;
+      border-radius: 10px;
+      padding: 10px;
+      width: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      transition: transform 0.2s;
     }
+
+    .media-card:hover {
+      transform: scale(1.05);
+    }
+
+    .media-card img.logo {
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+
+    .media-card span {
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
     audio, video {
-      max-width: 300px;
-      margin-top: 10px;
+      width: 100%;
+      border-radius: 6px;
+      margin-bottom: 10px;
     }
+
+    a.download-link {
+      text-decoration: none;
+      color: white;
+      background-color: #0077cc;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
     .tubi {
       text-align: center;
-      margin: 30px 0;
+      margin: 40px 0;
     }
-    iframe {
-      max-width: 100%;
+
+    .tubi iframe {
+      width: 80%;
       height: 400px;
+      border-radius: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>Media Files</h1>
-  <ul id="media-list">
-    <li>Loading...</li>
-  </ul>
+  <h1>Media Gallery</h1>
+
+  <div class="media-gallery" id="media-gallery">
+    <p>Loading media...</p>
+  </div>
 
   <div class="tubi">
-    <h2>Watch The Angry Birds Movie on TubiTV</h2>
-    <p>
-      <a href="https://tubitv.com/movies/672287/the-angry-birds-movie" target="_blank">
-        Click here to watch on TubiTV
-      </a>
-    </p>
-    <!-- Example YouTube trailer embed if available -->
+    <h2>Watch The Angry Birds Movie Trailer</h2>
     <iframe 
       src="https://www.youtube.com/embed/2YCBmL87iwY" 
       title="Angry Birds Movie Trailer" 
@@ -70,24 +99,50 @@
   </div>
 
   <script>
+    const logoMap = {
+      'war': 'assets/war.png',
+      'horror': 'assets/horror.png',
+      'babyyoda': 'assets/babyyoda.png'
+    };
+
     async function fetchMedia() {
       try {
         const res = await fetch('/.netlify/functions/medialist');
         if (!res.ok) throw new Error('Failed to fetch media files');
 
         const data = await res.json();
-        const list = document.getElementById('media-list');
-        list.innerHTML = '';
+        const gallery = document.getElementById('media-gallery');
+        gallery.innerHTML = '';
 
         if (data.mediaFiles.length === 0) {
-          list.innerHTML = '<li>No media files found.</li>';
+          gallery.innerHTML = '<p>No media files found.</p>';
           return;
         }
 
         data.mediaFiles.forEach(file => {
-          const li = document.createElement('li');
-          const name = document.createElement('span');
-          name.textContent = file.name;
+          const card = document.createElement('div');
+          card.className = 'media-card';
+
+          // Determine logo based on file name
+          let logoSrc = null;
+          for (const key in logoMap) {
+            if (file.name.toLowerCase().includes(key)) {
+              logoSrc = logoMap[key];
+              break;
+            }
+          }
+
+          if (logoSrc) {
+            const logo = document.createElement('img');
+            logo.src = logoSrc;
+            logo.alt = file.name;
+            logo.className = 'logo';
+            card.appendChild(logo);
+          }
+
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = file.name;
+          card.appendChild(nameSpan);
 
           let mediaElement;
           if (file.name.toLowerCase().endsWith('.mp3')) {
@@ -100,19 +155,19 @@
             mediaElement.src = file.download_url;
           }
 
-          const link = document.createElement('a');
-          link.href = file.download_url;
-          link.textContent = 'Download';
-          link.target = '_blank';
+          if (mediaElement) card.appendChild(mediaElement);
 
-          li.appendChild(name);
-          if (mediaElement) li.appendChild(mediaElement);
-          li.appendChild(link);
+          const downloadLink = document.createElement('a');
+          downloadLink.href = file.download_url;
+          downloadLink.textContent = 'Download';
+          downloadLink.target = '_blank';
+          downloadLink.className = 'download-link';
+          card.appendChild(downloadLink);
 
-          list.appendChild(li);
+          gallery.appendChild(card);
         });
       } catch (err) {
-        document.getElementById('media-list').innerHTML = `<li>Error: ${err.message}</li>`;
+        document.getElementById('media-gallery').innerHTML = `<p>Error: ${err.message}</p>`;
       }
     }
 
