@@ -4,18 +4,22 @@
   <meta charset="UTF-8">
   <title>Upload & View Videos</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; background: #f5f5f5; }
-    h1 { color: #333; }
+    body { font-family: Arial, sans-serif; padding: 2rem; background: #121212; color: #fff; }
+    h1 { color: #fff; }
     input, button { padding: 0.5rem; margin: 0.5rem 0; }
     progress { width: 100%; height: 20px; margin-top: 1rem; }
     #result, #videosList { margin-top: 1rem; word-break: break-all; }
-    .video-item { margin-bottom: 1rem; }
-    video { max-width: 100%; height: auto; display: block; }
+    .video-item { margin-bottom: 2rem; background: #1f1f1f; padding: 1rem; border-radius: 10px; }
+    video { width: 100%; border-radius: 10px; background-color: black; display: block; }
+    .shareBtn { margin-top: 0.5rem; padding: 5px 10px; border: none; background-color: #0077cc; color: #fff; border-radius: 5px; cursor: pointer; }
+    .shareBtn:hover { background-color: #005fa3; }
   </style>
 </head>
 <body>
   <h1>Upload MP4 Video</h1>
   <input type="file" id="videoFile" accept=".mp4,video/mp4">
+  <br>
+  <input type="file" id="coverFile" accept="image/*">
   <br>
   <button id="uploadBtn">Upload</button>
   <progress id="progressBar" value="0" max="100" style="display:none;"></progress>
@@ -26,28 +30,26 @@
   <div id="videosList"></div>
 
   <script>
-    // Try to get session token (non-HTTP-only fallback)
     function getSessionCookie() {
       const cookies = document.cookie.split(';').map(c => c.trim());
       const sessionCookie = cookies.find(c => c.startsWith('__Host-session_secure='));
       return sessionCookie ? sessionCookie.split('=')[1] : null;
     }
 
-    // Upload Video
     document.getElementById('uploadBtn').addEventListener('click', async () => {
-      const fileInput = document.getElementById('videoFile');
-      const file = fileInput.files[0];
-      if (!file) { alert('Please select a video file.'); return; }
-      if (file.type !== 'video/mp4' && !file.name.toLowerCase().endsWith('.mp4')) {
-        alert('Only MP4 files are allowed.'); return;
-      }
+      const videoFile = document.getElementById('videoFile').files[0];
+      const coverFile = document.getElementById('coverFile').files[0];
+
+      if (!videoFile || !coverFile) { alert('Please select both video and cover art.'); return; }
+      if (!videoFile.name.toLowerCase().endsWith('.mp4')) { alert('Only MP4 files are allowed.'); return; }
 
       const progressBar = document.getElementById('progressBar');
       progressBar.style.display = 'block';
       progressBar.value = 0;
 
       const formData = new FormData();
-      formData.append('video', file);
+      formData.append('video', videoFile);
+      formData.append('cover', coverFile);
 
       try {
         const sessionToken = getSessionCookie();
@@ -70,7 +72,9 @@
         const data = await response.json();
         document.getElementById('result').innerHTML = `
           Upload successful! <br>
-          <a href="${data.videoUrl}" target="_blank">View Video</a>
+          <video controls poster="${data.coverUrl}">
+            <source src="${data.videoUrl}" type="video/mp4">
+          </video>
         `;
       } catch (err) {
         console.error(err);
@@ -80,28 +84,16 @@
       }
     });
 
-    // View Videos
     document.getElementById('viewBtn').addEventListener('click', async () => {
       const videosList = document.getElementById('videosList');
       videosList.innerHTML = 'Loading videos...';
 
       try {
-        const response = await fetch('/.netlify/functions/view-videos', {
-          method: 'GET',
-          credentials: 'same-origin'
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          videosList.innerText = 'Failed to load videos: ' + text;
-          return;
-        }
+        const response = await fetch('/.netlify/functions/view-videos', { method: 'GET', credentials: 'same-origin' });
+        if (!response.ok) { const text = await response.text(); videosList.innerText = 'Failed to load videos: ' + text; return; }
 
         const videos = await response.json();
-        if (!videos.length) {
-          videosList.innerText = 'No videos uploaded yet.';
-          return;
-        }
+        if (!videos.length) { videosList.innerText = 'No videos uploaded yet.'; return; }
 
         videosList.innerHTML = '';
         videos.forEach(video => {
@@ -110,12 +102,13 @@
           div.innerHTML = `
             <p>User: ${video.user ? video.user.email : 'Unknown'}</p>
             <p>Uploaded: ${video.uploaded_at ? new Date(video.uploaded_at).toLocaleString() : 'Unknown'}</p>
-            <video controls src="${video.videoUrl}"></video>
+            <video controls poster="${video.coverUrl}">
+              <source src="${video.videoUrl}" type="video/mp4">
+            </video>
             <button class="shareBtn">Share Video</button>
           `;
           videosList.appendChild(div);
 
-          // Add share functionality
           const shareBtn = div.querySelector('.shareBtn');
           shareBtn.addEventListener('click', () => {
             navigator.clipboard.writeText(video.videoUrl)
