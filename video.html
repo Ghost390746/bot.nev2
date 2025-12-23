@@ -45,7 +45,7 @@
     </div>
   </div>
 
-  <!-- Upload section (only for own profile) -->
+  <!-- Upload section (optional, kept for existing code) -->
   <div id="uploadSection" style="display:none;">
     <h1>Upload MP4 Video</h1>
     <input type="file" id="videoFile" accept=".mp4,video/mp4">
@@ -67,12 +67,7 @@
   </div>
 
   <script>
-    function getSessionCookie() {
-      const cookies = document.cookie.split(';').map(c => c.trim());
-      const sessionCookie = cookies.find(c => c.startsWith('__Host-session_secure='));
-      return sessionCookie ? sessionCookie.split('=')[1] : null;
-    }
-
+    // Modal functions
     function openModal(videoUrl) {
       const modal = document.getElementById('videoModal');
       const modalVideo = document.getElementById('modalVideo');
@@ -89,17 +84,10 @@
       modal.style.display = 'none';
     }
 
+    // Load user profile and videos
     async function loadUserProfile(userEmail) {
       try {
-        const sessionToken = getSessionCookie();
-        const headers = {};
-        if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
-
-        const res = await fetch(`/.netlify/functions/profile-videos?email=${encodeURIComponent(userEmail)}`, {
-          method: 'GET',
-          headers,
-          credentials: 'same-origin'
-        });
+        const res = await fetch(`/.netlify/functions/profile-videos?email=${encodeURIComponent(userEmail)}`);
         if (!res.ok) throw new Error('Failed to fetch profile');
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
@@ -108,20 +96,20 @@
         document.getElementById('username').innerText = data.user.username || 'Unknown';
         document.getElementById('email').innerText = data.user.email || '';
 
-        // Show upload section only if viewing own profile
-        if (sessionToken && sessionToken === userEmail) {
-          document.getElementById('uploadSection').style.display = 'block';
-        }
-
         loadUserVideos(data.videos || []);
       } catch (err) {
         console.error(err);
+        document.getElementById('videosList').innerText = 'Failed to load videos: ' + err.message;
       }
     }
 
+    // Display videos
     function loadUserVideos(videos) {
       const videosList = document.getElementById('videosList');
-      if (!videos.length) { videosList.innerText = 'No videos uploaded yet.'; return; }
+      if (!videos.length) { 
+        videosList.innerText = 'No videos uploaded yet.'; 
+        return; 
+      }
 
       videosList.innerHTML = '';
       videos.forEach(video => {
@@ -144,7 +132,7 @@
         div.addEventListener('click', () => openModal(video.videoUrl));
 
         const shareBtn = div.querySelector('.shareBtn');
-        shareBtn.addEventListener('click', (e) => {
+        shareBtn.addEventListener('click', e => {
           e.stopPropagation();
           navigator.clipboard.writeText(video.videoUrl)
             .then(() => alert('Video URL copied!'))
@@ -153,6 +141,7 @@
       });
     }
 
+    // Optional: Upload code preserved
     document.getElementById('uploadBtn').addEventListener('click', async () => {
       const videoFile = document.getElementById('videoFile').files[0];
       const coverFile = document.getElementById('coverFile').files[0];
@@ -167,17 +156,15 @@
       formData.append('cover', coverFile);
 
       try {
-        const sessionToken = getSessionCookie();
-        const headers = {};
-        if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
-
         const res = await fetch('/.netlify/functions/upload-video', {
           method: 'POST',
           body: formData,
-          headers,
           credentials: 'same-origin'
         });
-        if (!res.ok) { const text = await res.text(); return document.getElementById('result').innerText = 'Upload failed: ' + text; }
+        if (!res.ok) { 
+          const text = await res.text(); 
+          return document.getElementById('result').innerText = 'Upload failed: ' + text; 
+        }
 
         const data = await res.json();
         document.getElementById('result').innerHTML = `
@@ -186,8 +173,6 @@
             <source src="${data.videoUrl}" type="video/mp4">
           </video>
         `;
-
-        // Reload user's videos after upload
         loadUserProfile(data.userEmail || '');
       } catch (err) {
         console.error(err);
@@ -197,9 +182,10 @@
       }
     });
 
-    // Load profile based on URL param
+    // Load profile on page load using URL param
     const userEmail = new URLSearchParams(window.location.search).get('email');
     if (userEmail) loadUserProfile(userEmail);
+    else document.getElementById('videosList').innerText = 'No email provided in URL.';
   </script>
 </body>
 </html>
