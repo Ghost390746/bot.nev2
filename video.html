@@ -4,181 +4,268 @@
   <meta charset="UTF-8">
   <title>Upload & View Videos</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; background: #121212; color: #fff; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      background: #121212;
+      color: #fff;
+    }
     h1 { color: #fff; }
 
     /* Upload section */
-    #uploadSection { 
-      background: #1f1f1f; 
-      padding: 1.5rem; 
-      border-radius: 12px; 
-      margin-bottom: 2rem; 
+    #uploadSection {
+      background: #1f1f1f;
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
     }
-    #uploadSection input, #uploadSection button { padding: 0.5rem; margin: 0.5rem 0; width: 100%; }
-    #uploadSection button { background-color: #0077cc; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-    #uploadSection button:hover { background-color: #005fa3; }
+    #uploadSection input, #uploadSection button {
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      width: 100%;
+    }
+    #uploadSection button {
+      background-color: #0077cc;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #uploadSection button:hover {
+      background-color: #005fa3;
+    }
 
-    progress { width: 100%; height: 20px; margin-top: 1rem; }
+    progress {
+      width: 100%;
+      height: 20px;
+      margin-top: 1rem;
+    }
 
     #result { margin-top: 1rem; word-break: break-all; }
 
-    /* Big video module grid */
-    #videosList { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 1.5rem; }
-    .video-item { position: relative; border-radius: 12px; overflow: hidden; background: #1f1f1f; cursor: pointer; transition: transform 0.2s ease; }
-    .video-item:hover { transform: scale(1.03); }
-
-    .video-item video { width: 100%; display: block; border-radius: 12px; background-color: black; }
-
-    .shareBtn { margin-top: 0.5rem; padding: 5px 10px; border: none; background-color: #0077cc; color: #fff; border-radius: 5px; cursor: pointer; }
+    /* Big module style for videos */
+    #videosList {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .video-item {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #1f1f1f;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      width: 100%;
+      max-width: 100%; /* Full width like your original */
+    }
+    .video-item:hover {
+      transform: scale(1.02);
+    }
+    .video-item video {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+      background-color: black;
+    }
+    .video-info {
+      padding: 0.5rem;
+      font-size: 0.9rem;
+      color: #fff;
+    }
+    .shareBtn {
+      margin-top: 0.5rem;
+      padding: 5px 10px;
+      border: none;
+      background-color: #0077cc;
+      color: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+    }
     .shareBtn:hover { background-color: #005fa3; }
 
     /* Full-screen modal */
-    #videoModal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); justify-content:center; align-items:center; z-index:999; }
-    #videoModal video { max-width: 95%; max-height: 95%; border-radius: 12px; box-shadow: 0 0 20px #000; }
-    #videoModal button { position: absolute; top: 20px; right: 20px; padding: 10px 15px; font-size: 16px; cursor: pointer; background: #0077cc; border: none; border-radius: 5px; color: #fff; }
+    #videoModal {
+      display: none;
+      position: fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background: rgba(0,0,0,0.95);
+      justify-content:center;
+      align-items:center;
+      z-index:999;
+    }
+    #videoModal video {
+      width: 90%;
+      height: auto;
+      max-height: 95%;
+      border-radius: 12px;
+      box-shadow: 0 0 20px #000;
+    }
+    #videoModal button {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      padding: 10px 15px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #0077cc;
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+    }
     #videoModal button:hover { background: #005fa3; }
   </style>
 </head>
 <body>
 
-  <h1>Upload MP4 Video</h1>
-  <div id="uploadSection">
-    <input type="file" id="videoFile" accept=".mp4,video/mp4">
-    <input type="file" id="coverFile" accept="image/*">
-    <button id="uploadBtn">Upload</button>
-    <progress id="progressBar" value="0" max="100" style="display:none;"></progress>
-    <div id="result"></div>
-  </div>
+<h1>Upload MP4 Video</h1>
+<div id="uploadSection">
+  <input type="file" id="videoFile" accept=".mp4,video/mp4">
+  <input type="file" id="coverFile" accept="image/*">
+  <button id="uploadBtn">Upload</button>
+  <progress id="progressBar" value="0" max="100" style="display:none;"></progress>
+  <div id="result"></div>
+</div>
 
-  <h1>View Uploaded Videos</h1>
-  <button id="viewBtn">Load Videos</button>
-  <div id="videosList"></div>
+<h1>View Uploaded Videos</h1>
+<button id="viewBtn">Load Videos</button>
+<div id="videosList"></div>
 
-  <!-- Full-screen modal -->
-  <div id="videoModal">
-    <video id="modalVideo" controls></video>
-    <button onclick="closeModal()">X</button>
-  </div>
+<!-- Full-screen modal -->
+<div id="videoModal">
+  <video id="modalVideo" controls></video>
+  <button onclick="closeModal()">X</button>
+</div>
 
-  <script>
-    function getSessionCookie() {
-      const cookies = document.cookie.split(';').map(c => c.trim());
-      const sessionCookie = cookies.find(c => c.startsWith('__Host-session_secure='));
-      return sessionCookie ? sessionCookie.split('=')[1] : null;
-    }
+<script>
+function getSessionCookie() {
+  const cookies = document.cookie.split(';').map(c => c.trim());
+  const sessionCookie = cookies.find(c => c.startsWith('__Host-session_secure='));
+  return sessionCookie ? sessionCookie.split('=')[1] : null;
+}
 
-    function openModal(videoUrl) {
-      const modal = document.getElementById('videoModal');
-      const modalVideo = document.getElementById('modalVideo');
-      modalVideo.src = videoUrl;
-      modal.style.display = 'flex';
-      modalVideo.play();
-    }
+function openModal(videoUrl) {
+  const modal = document.getElementById('videoModal');
+  const modalVideo = document.getElementById('modalVideo');
+  modalVideo.src = videoUrl;
+  modal.style.display = 'flex';
+  modalVideo.play();
+}
 
-    function closeModal() {
-      const modal = document.getElementById('videoModal');
-      const modalVideo = document.getElementById('modalVideo');
-      modalVideo.pause();
-      modalVideo.src = '';
-      modal.style.display = 'none';
-    }
+function closeModal() {
+  const modal = document.getElementById('videoModal');
+  const modalVideo = document.getElementById('modalVideo');
+  modalVideo.pause();
+  modalVideo.src = '';
+  modal.style.display = 'none';
+}
 
-    // Upload video
-    document.getElementById('uploadBtn').addEventListener('click', async () => {
-      const videoFile = document.getElementById('videoFile').files[0];
-      const coverFile = document.getElementById('coverFile').files[0];
+// Upload video
+document.getElementById('uploadBtn').addEventListener('click', async () => {
+  const videoFile = document.getElementById('videoFile').files[0];
+  const coverFile = document.getElementById('coverFile').files[0];
+  if (!videoFile || !coverFile) { alert('Please select both video and cover art.'); return; }
+  if (!videoFile.name.toLowerCase().endsWith('.mp4')) { alert('Only MP4 files are allowed.'); return; }
 
-      if (!videoFile || !coverFile) { alert('Please select both video and cover art.'); return; }
-      if (!videoFile.name.toLowerCase().endsWith('.mp4')) { alert('Only MP4 files are allowed.'); return; }
+  const progressBar = document.getElementById('progressBar');
+  progressBar.style.display = 'block';
+  progressBar.value = 0;
 
-      const progressBar = document.getElementById('progressBar');
-      progressBar.style.display = 'block';
-      progressBar.value = 0;
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  formData.append('cover', coverFile);
 
-      const formData = new FormData();
-      formData.append('video', videoFile);
-      formData.append('cover', coverFile);
+  try {
+    const sessionToken = getSessionCookie();
+    const headers = {};
+    if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
 
-      try {
-        const sessionToken = getSessionCookie();
-        const headers = {};
-        if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
-
-        const response = await fetch('/.netlify/functions/upload-video', {
-          method: 'POST',
-          body: formData,
-          headers,
-          credentials: 'same-origin'
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          document.getElementById('result').innerText = 'Upload failed: ' + text;
-          return;
-        }
-
-        const data = await response.json();
-        document.getElementById('result').innerHTML = `
-          Upload successful! <br>
-          <video controls poster="${data.coverUrl}">
-            <source src="${data.videoUrl}" type="video/mp4">
-          </video>
-        `;
-      } catch (err) {
-        console.error(err);
-        document.getElementById('result').innerText = 'Upload failed: ' + err.message;
-      } finally {
-        progressBar.style.display = 'none';
-      }
+    const response = await fetch('/.netlify/functions/upload-video', {
+      method: 'POST',
+      body: formData,
+      headers,
+      credentials: 'same-origin'
     });
 
-    // View videos
-    document.getElementById('viewBtn').addEventListener('click', async () => {
-      const videosList = document.getElementById('videosList');
-      videosList.innerHTML = 'Loading videos...';
+    if (!response.ok) {
+      const text = await response.text();
+      document.getElementById('result').innerText = 'Upload failed: ' + text;
+      return;
+    }
 
-      try {
-        const response = await fetch('/.netlify/functions/view-videos', { method: 'GET', credentials: 'same-origin' });
-        if (!response.ok) { const text = await response.text(); videosList.innerText = 'Failed to load videos: ' + text; return; }
+    const data = await response.json();
+    document.getElementById('result').innerHTML = `
+      Upload successful! <br>
+      <video controls poster="${data.coverUrl}">
+        <source src="${data.videoUrl}" type="video/mp4">
+      </video>
+    `;
+  } catch (err) {
+    console.error(err);
+    document.getElementById('result').innerText = 'Upload failed: ' + err.message;
+  } finally {
+    progressBar.style.display = 'none';
+  }
+});
 
-        const videos = await response.json();
-        if (!videos.length) { videosList.innerText = 'No videos uploaded yet.'; return; }
+// View videos
+document.getElementById('viewBtn').addEventListener('click', async () => {
+  const videosList = document.getElementById('videosList');
+  videosList.innerHTML = 'Loading videos...';
 
-        videosList.innerHTML = '';
-        videos.forEach(video => {
-          const div = document.createElement('div');
-          div.className = 'video-item';
-          div.innerHTML = `
-            <p>User: ${video.user ? video.user.email : 'Unknown'}</p>
-            <p>Uploaded: ${video.uploaded_at ? new Date(video.uploaded_at).toLocaleString() : 'Unknown'}</p>
-            <video muted preload="metadata" poster="${video.coverUrl}">
-              <source src="${video.videoUrl}" type="video/mp4">
-            </video>
-            <button class="shareBtn">Share Video</button>
-          `;
-          videosList.appendChild(div);
+  try {
+    const response = await fetch('/.netlify/functions/view-videos', { method: 'GET', credentials: 'same-origin' });
+    if (!response.ok) { 
+      const text = await response.text(); 
+      videosList.innerText = 'Failed to load videos: ' + text; 
+      return; 
+    }
 
-          const vid = div.querySelector('video');
+    const videos = await response.json();
+    if (!videos.length) { 
+      videosList.innerText = 'No videos uploaded yet.'; 
+      return; 
+    }
 
-          // Hover autoplay only
-          div.addEventListener('mouseenter', () => vid.play());
-          div.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+    videosList.innerHTML = '';
+    videos.forEach(video => {
+      const div = document.createElement('div');
+      div.className = 'video-item';
+      div.innerHTML = `
+        <p style="margin:0; font-weight:bold;">User: ${video.user ? video.user.email : 'Unknown'}</p>
+        <p style="margin:0 0 0.5rem 0; color:#aaa; font-size:0.85rem;">Uploaded: ${video.uploaded_at ? new Date(video.uploaded_at).toLocaleString() : 'Unknown'}</p>
+        <video muted preload="metadata" poster="${video.coverUrl}">
+          <source src="${video.videoUrl}" type="video/mp4">
+        </video>
+        <button class="shareBtn">Share Video</button>
+      `;
+      videosList.appendChild(div);
 
-          // Click for full-screen
-          vid.addEventListener('click', () => openModal(video.videoUrl));
+      const vid = div.querySelector('video');
 
-          const shareBtn = div.querySelector('.shareBtn');
-          shareBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(video.videoUrl)
-              .then(() => alert('Video URL copied to clipboard!'))
-              .catch(() => alert('Failed to copy URL.'));
-          });
-        });
-      } catch (err) {
-        console.error(err);
-        videosList.innerText = 'Failed to load videos: ' + err.message;
-      }
+      // Hover autoplay only
+      div.addEventListener('mouseenter', () => vid.play());
+      div.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+
+      // Click for full-screen modal
+      vid.addEventListener('click', () => openModal(video.videoUrl));
+
+      const shareBtn = div.querySelector('.shareBtn');
+      shareBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(video.videoUrl)
+          .then(() => alert('Video URL copied to clipboard!'))
+          .catch(() => alert('Failed to copy URL.'));
+      });
     });
-  </script>
+  } catch (err) {
+    console.error(err);
+    videosList.innerText = 'Failed to load videos: ' + err.message;
+  }
+});
+</script>
 </body>
 </html>
