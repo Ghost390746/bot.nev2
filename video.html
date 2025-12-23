@@ -27,8 +27,7 @@
     .video-item { position: relative; border-radius: 12px; overflow: hidden; background: #1f1f1f; cursor: pointer; transition: transform 0.2s ease; }
     .video-item:hover { transform: scale(1.03); }
 
-    .video-item video { width: 100%; display: block; border-radius: 12px; background-color: black; transition: transform 0.3s ease; }
-    .video-info { padding: 0.5rem; font-size: 0.9rem; color: #fff; }
+    .video-item video { width: 100%; display: block; border-radius: 12px; background-color: black; }
 
     .shareBtn { margin-top: 0.5rem; padding: 5px 10px; border: none; background-color: #0077cc; color: #fff; border-radius: 5px; cursor: pointer; }
     .shareBtn:hover { background-color: #005fa3; }
@@ -161,11 +160,11 @@
 
           const vid = div.querySelector('video');
 
-          // Hover autoplay
+          // Hover autoplay only
           div.addEventListener('mouseenter', () => vid.play());
           div.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
 
-          // Click video for full-screen modal
+          // Click for full-screen
           vid.addEventListener('click', () => openModal(video.videoUrl));
 
           const shareBtn = div.querySelector('.shareBtn');
