@@ -61,13 +61,17 @@ body {
 
 /* Sidebar */
 #sidebar {
-  width: 250px;
+  width: 220px; /* slightly smaller for mobile scaling */
+  min-width: 180px;
   background-color: #1e1e1e;
   color: #fff;
-  padding: 20px;
+  padding: 20px 10px;
   box-sizing: border-box;
   overflow-y: auto;
   flex-shrink: 0;
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 #sidebar ul {
@@ -84,7 +88,7 @@ body {
   color: #fff;
   text-decoration: none;
   display: block;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 5px;
   transition: background 0.2s;
 }
@@ -231,20 +235,20 @@ button:hover {
 /* Images responsive */
 img { max-width: 100%; height: auto; }
 
-/* MOBILE RESPONSIVE */
+/* MOBILE FIXES */
 @media (max-width: 768px) {
   body {
-    flex-direction: column;
+    flex-direction: row; /* keep sidebar on left */
   }
 
   #sidebar {
-    width: 100%;
-    height: auto;
-    order: -1; /* show sidebar on top for mobile */
+    width: 160px;
+    padding: 10px 5px;
   }
 
   #mainContent {
-    padding: 15px;
+    padding: 10px;
+    min-width: 0;
   }
 
   form, #incomingRequests div {
@@ -263,6 +267,8 @@ img { max-width: 100%; height: auto; }
   }
 }
 </style>
+</head>
+<body>
 
 <!-- Sidebar -->
 <div id="sidebar">
@@ -539,6 +545,7 @@ loadProfile().then(loadIncoming).then(loadVoices);
 </script>
 </body>
 </html>
+
 
 
 
