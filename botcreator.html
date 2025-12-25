@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create AI Bot — Botnev</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:20px; background:#f9fafc; }
+  h1 { color:#007bff; }
+  form { max-width:600px; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+  input, textarea, select, button { width:100%; margin-bottom:15px; padding:12px; font-size:16px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+  button { background:#007bff; color:white; border:none; cursor:pointer; }
+  button:hover { background:#0056b3; }
+  fieldset { margin-bottom:15px; padding:15px; border-radius:6px; border:1px solid #ccc; }
+  legend { font-weight:bold; }
+  .output { margin-top:15px; font-family: monospace; padding:10px; border-radius:6px; }
+  .success { background:#e6ffed; color:#256d1b; border:1px solid #8dd48a; }
+  .error { background:#ffe6e6; color:#a12626; border:1px solid #f5a3a3; }
+</style>
+</head>
+<body>
+
+<h1>🤖 Create Your AI Bot</h1>
+
+<form id="botForm">
+  <!-- Basic info -->
+  <input type="text" id="botName" placeholder="Bot Name" required />
+  <textarea id="description" placeholder="Describe your bot..." required></textarea>
+
+  <!-- Voice & FBX -->
+  <label for="voiceSelect">Select Voice:</label>
+  <select id="voiceSelect" required><option value="">Loading voices...</option></select>
+
+  <label for="fbxSelect">Select FBX Model:</label>
+  <select id="fbxSelect" required><option value="">Choose FBX Model</option></select>
+
+  <!-- Paid link -->
+  <input type="text" id="gumroadLink" placeholder="Optional Gumroad Link" />
+
+  <!-- Personality -->
+  <fieldset>
+    <legend>Personality</legend>
+    <input type="text" id="personalityTone" placeholder="Tone (e.g., friendly)" />
+    <input type="text" id="personalityTraits" placeholder="Traits (comma separated)" />
+    <input type="text" id="personalityValues" placeholder="Values (comma separated)" />
+    <input type="text" id="personalityBoundaries" placeholder="Boundaries (comma separated)" />
+  </fieldset>
+
+  <!-- Emotional state -->
+  <fieldset>
+    <legend>Emotional State</legend>
+    <input type="text" id="mood" placeholder="Mood (e.g., curious)" />
+    <input type="number" id="trust" placeholder="Trust (0-1)" min="0" max="1" step="0.01" value="0.5" />
+    <input type="number" id="stress" placeholder="Stress (0-1)" min="0" max="1" step="0.01" value="0.2" />
+  </fieldset>
+
+  <!-- Goals -->
+  <fieldset>
+    <legend>Goals</legend>
+    <input type="text" id="goal1" placeholder="Goal 1 (e.g., Help user)" />
+    <input type="number" id="goal1Priority" placeholder="Priority (e.g., 1)" min="1" max="10" step="1" value="1" />
+  </fieldset>
+
+  <!-- Expressions -->
+  <fieldset>
+    <legend>Expressions</legend>
+    <input type="text" id="expression1" placeholder="Expression 1 (e.g., happy)" />
+    <input type="text" id="expression2" placeholder="Expression 2 (e.g., sad)" />
+  </fieldset>
+
+  <button type="submit">Create Bot</button>
+</form>
+
+<div id="output" class="output"></div>
+
+<script>
+const form = document.getElementById('botForm');
+const output = document.getElementById('output');
+const voiceSelect = document.getElementById('voiceSelect');
+const fbxSelect = document.getElementById('fbxSelect');
+
+// Load voices
+async function loadVoices() {
+  try {
+    const res = await fetch('/.netlify/functions/get-voices', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include' });
+    const voices = await res.json();
+    voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+    voices.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+  } catch(e) {
+    voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
+    console.error(e);
+  }
+}
+
+// FBX models (static)
+const fbxModels = [
+  {id:'model1', name:'Humanoid Default'},
+  {id:'model2', name:'Robot Model'}
+];
+fbxModels.forEach(m => {
+  const opt = document.createElement('option');
+  opt.value = m.id;
+  opt.textContent = m.name;
+  fbxSelect.appendChild(opt);
+});
+
+// Submit form
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+
+  const name = document.getElementById('botName').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const voice_id = voiceSelect.value;
+  const fbx_model_id = fbxSelect.value;
+  const paid_link = document.getElementById('gumroadLink').value.trim();
+
+  const personality = {
+    tone: document.getElementById('personalityTone').value.trim(),
+    traits: document.getElementById('personalityTraits').value.split(',').map(t=>t.trim()).filter(Boolean),
+    values: document.getElementById('personalityValues').value.split(',').map(t=>t.trim()).filter(Boolean),
+    boundaries: document.getElementById('personalityBoundaries').value.split(',').map(t=>t.trim()).filter(Boolean)
+  };
+
+  const emotional_state = {
+    mood: document.getElementById('mood').value.trim(),
+    trust: parseFloat(document.getElementById('trust').value) || 0.5,
+    stress: parseFloat(document.getElementById('stress').value) || 0.2
+  };
+
+  const goals = [];
+  const goal1 = document.getElementById('goal1').value.trim();
+  const goal1Priority = parseInt(document.getElementById('goal1Priority').value) || 1;
+  if(goal1) goals.push({ goal: goal1, priority: goal1Priority });
+
+  const expressions = [
+    document.getElementById('expression1').value.trim(),
+    document.getElementById('expression2').value.trim()
+  ].filter(Boolean);
+
+  if(!name || !description || !voice_id || !fbx_model_id){
+    output.textContent = 'Please fill all required fields.';
+    output.className = 'output error';
+    return;
+  }
+
+  output.textContent = 'Creating bot...';
+  output.className = 'output';
+
+  try {
+    const res = await fetch('/.netlify/functions/overpoweredbot', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify({ 
+        action:'createbot', 
+        name, description, voice_id, fbx_model_id, paid_link,
+        personality, emotional_state, goals, expressions
+      })
+    });
+    const data = await res.json();
+    if(!res.ok || data.error){
+      output.textContent = `Error: ${data.error || 'Unknown'}`;
+      output.className = 'output error';
+      return;
+    }
+    output.innerHTML = `<strong>Bot Created Successfully!</strong><br>
+      Bot Token (save this!): <code>${data.bot_token || 'N/A'}</code><br>
+      Expires in: ${data.expires_in_minutes || 'N/A'} minutes`;
+    output.className = 'output success';
+    form.reset();
+  } catch(e) {
+    output.textContent = 'Failed to create bot.';
+    output.className = 'output error';
+    console.error(e);
+  }
+});
+
+// Initial load
+loadVoices();
+</script>
+
+</body>
+</html>
