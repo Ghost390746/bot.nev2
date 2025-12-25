@@ -90,7 +90,7 @@ function generateUserFiles({ name, description, voice_id, fbx_model_id, apiKey }
 }
 
 // ---------------------- Create Bot ----------------------
-async function createBot({ name, description, voice_id, fbx_model_id, paid_link, personality, emotional_state, goals, expressions, dialogue }, ip) {
+async function createBot({ name, description, voice_id, fbx_model_id, paid_link, personality, emotional_state, goals, expressions, dialogue, memories, dialogue_state }, ip) {
 
   if (!rateLimit(ip)) return { error: "Too many requests" };
   if (![name, description, voice_id, fbx_model_id].every(isValidInput)) return { error: "Invalid input" };
@@ -109,6 +109,8 @@ async function createBot({ name, description, voice_id, fbx_model_id, paid_link,
   goals = Array.isArray(goals) && goals.length ? goals : [{ goal: "Help user", priority: 1 }];
   expressions = Array.isArray(expressions) && expressions.length ? expressions : [];
   dialogue = dialogue || "";
+  memories = Array.isArray(memories) ? memories : [];
+  dialogue_state = dialogue_state || {};
 
   const bot = {
     name,
@@ -125,36 +127,42 @@ async function createBot({ name, description, voice_id, fbx_model_id, paid_link,
     goals,
     expressions,
     dialogue,
-    memories: [],
-    dialogue_state: {},
+    memories,
+    dialogue_state,
 
     token_hash: hashedToken,
     token_expiry: tokenExpiry
   };
 
-  const { error } = await supabase.from('bots').insert(bot);
-  if (error) return { error: "Database error" };
+  // --- Insert and return exact error ---
+  const { data, error } = await supabase.from('bots').insert(bot);
+  if (error) {
+    // Return full Supabase error info
+    return {
+      error: error.message || "Database error",
+      details: error.details || null,
+      hint: error.hint || null,
+      code: error.code || null
+    };
+  }
 
   return {
     message: "Bot created. Save this token now — it will never be shown again.",
     bot_token: rawToken,
+    api_key: apiKey,
     expires_in_minutes: 15
   };
-}
-
-// ---------------------- CLI ----------------------
-if (process.env.CLI_MODE === "true") {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.on('line', async input => {
-    const [cmd] = input.split(" ");
-    if (cmd === "!createbot") console.log(await createBot({ name:"CLI", description:"AI", voice_id:"en", fbx_model_id:"1" }, "cli"));
-  });
 }
 
 // ---------------------- Netlify Handler ----------------------
 export async function handler(event) {
   const ip = event.headers['x-forwarded-for'] || 'unknown';
   const body = event.body ? JSON.parse(event.body) : {};
-  if (body.action === "createbot") return { statusCode: 200, body: JSON.stringify(await createBot(body, ip)) };
+
+  if (body.action === "createbot") {
+    const result = await createBot(body, ip);
+    return { statusCode: 200, body: JSON.stringify(result) };
+  }
+
   return { statusCode: 400, body: "Invalid request" };
 }
