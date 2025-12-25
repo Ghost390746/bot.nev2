@@ -7,7 +7,7 @@
 <style>
   body { font-family: Arial, sans-serif; margin:0; padding:20px; background:#f9fafc; }
   h1 { color:#007bff; }
-  form { max-width:600px; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+  form { max-width:700px; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
   input, textarea, select, button { width:100%; margin-bottom:15px; padding:12px; font-size:16px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
   button { background:#007bff; color:white; border:none; cursor:pointer; }
   button:hover { background:#0056b3; }
@@ -16,6 +16,9 @@
   .output { margin-top:15px; font-family: monospace; padding:10px; border-radius:6px; }
   .success { background:#e6ffed; color:#256d1b; border:1px solid #8dd48a; }
   .error { background:#ffe6e6; color:#a12626; border:1px solid #f5a3a3; }
+  .btn-small { width:auto; padding:6px 12px; margin-top:5px; }
+  .goalItem, .expressionItem { display:flex; gap:10px; margin-bottom:5px; }
+  .goalItem input, .expressionItem input { flex:1; }
 </style>
 </head>
 <body>
@@ -57,15 +60,30 @@
   <!-- Goals -->
   <fieldset>
     <legend>Goals</legend>
-    <input type="text" id="goal1" placeholder="Goal 1 (e.g., Help user)" />
-    <input type="number" id="goal1Priority" placeholder="Priority (e.g., 1)" min="1" max="10" step="1" value="1" />
+    <div id="goalsContainer">
+      <div class="goalItem">
+        <input type="text" class="goalText" placeholder="Goal (e.g., Help user)" />
+        <input type="number" class="goalPriority" placeholder="Priority (1-10)" min="1" max="10" step="1" value="1" />
+      </div>
+    </div>
+    <button type="button" id="addGoalBtn" class="btn-small">Add Another Goal</button>
   </fieldset>
 
   <!-- Expressions -->
   <fieldset>
-    <legend>Expressions</legend>
-    <input type="text" id="expression1" placeholder="Expression 1 (e.g., happy)" />
-    <input type="text" id="expression2" placeholder="Expression 2 (e.g., sad)" />
+    <legend>Expressions (use emojis!)</legend>
+    <div id="expressionsContainer">
+      <div class="expressionItem">
+        <input type="text" class="expressionInput" placeholder="Expression (e.g., 😀 happy)" />
+      </div>
+    </div>
+    <button type="button" id="addExpressionBtn" class="btn-small">Add Another Expression</button>
+  </fieldset>
+
+  <!-- Custom Dialogue -->
+  <fieldset>
+    <legend>Custom Dialogue (.txt)</legend>
+    <input type="file" id="dialogueFile" accept=".txt" />
   </fieldset>
 
   <button type="submit">Create Bot</button>
@@ -78,6 +96,23 @@ const form = document.getElementById('botForm');
 const output = document.getElementById('output');
 const voiceSelect = document.getElementById('voiceSelect');
 const fbxSelect = document.getElementById('fbxSelect');
+
+const goalsContainer = document.getElementById('goalsContainer');
+document.getElementById('addGoalBtn').addEventListener('click', () => {
+  const div = document.createElement('div');
+  div.className = 'goalItem';
+  div.innerHTML = `<input type="text" class="goalText" placeholder="Goal (e.g., Help user)" />
+                   <input type="number" class="goalPriority" placeholder="Priority (1-10)" min="1" max="10" step="1" value="1" />`;
+  goalsContainer.appendChild(div);
+});
+
+const expressionsContainer = document.getElementById('expressionsContainer');
+document.getElementById('addExpressionBtn').addEventListener('click', () => {
+  const div = document.createElement('div');
+  div.className = 'expressionItem';
+  div.innerHTML = `<input type="text" class="expressionInput" placeholder="Expression (use emoji)" />`;
+  expressionsContainer.appendChild(div);
+});
 
 // Load voices
 async function loadVoices() {
@@ -109,7 +144,6 @@ fbxModels.forEach(m => {
   fbxSelect.appendChild(opt);
 });
 
-// Submit form
 form.addEventListener('submit', async e => {
   e.preventDefault();
 
@@ -132,15 +166,20 @@ form.addEventListener('submit', async e => {
     stress: parseFloat(document.getElementById('stress').value) || 0.2
   };
 
-  const goals = [];
-  const goal1 = document.getElementById('goal1').value.trim();
-  const goal1Priority = parseInt(document.getElementById('goal1Priority').value) || 1;
-  if(goal1) goals.push({ goal: goal1, priority: goal1Priority });
+  const goals = Array.from(document.querySelectorAll('.goalItem')).map(item => {
+    const goalText = item.querySelector('.goalText').value.trim();
+    const priority = parseInt(item.querySelector('.goalPriority').value) || 1;
+    return goalText ? { goal: goalText, priority } : null;
+  }).filter(Boolean);
 
-  const expressions = [
-    document.getElementById('expression1').value.trim(),
-    document.getElementById('expression2').value.trim()
-  ].filter(Boolean);
+  const expressions = Array.from(document.querySelectorAll('.expressionInput')).map(i => i.value.trim()).filter(Boolean);
+
+  // Read dialogue file
+  let dialogueText = '';
+  const dialogueFile = document.getElementById('dialogueFile').files[0];
+  if(dialogueFile){
+    dialogueText = await dialogueFile.text();
+  }
 
   if(!name || !description || !voice_id || !fbx_model_id){
     output.textContent = 'Please fill all required fields.';
@@ -159,7 +198,8 @@ form.addEventListener('submit', async e => {
       body: JSON.stringify({ 
         action:'createbot', 
         name, description, voice_id, fbx_model_id, paid_link,
-        personality, emotional_state, goals, expressions
+        personality, emotional_state, goals, expressions,
+        dialogue: dialogueText
       })
     });
     const data = await res.json();
@@ -170,6 +210,7 @@ form.addEventListener('submit', async e => {
     }
     output.innerHTML = `<strong>Bot Created Successfully!</strong><br>
       Bot Token (save this!): <code>${data.bot_token || 'N/A'}</code><br>
+      API Key (for external website): <code>${data.api_key || 'Generated on backend'}</code><br>
       Expires in: ${data.expires_in_minutes || 'N/A'} minutes`;
     output.className = 'output success';
     form.reset();
@@ -180,7 +221,6 @@ form.addEventListener('submit', async e => {
   }
 });
 
-// Initial load
 loadVoices();
 </script>
 
