@@ -12,20 +12,14 @@
 body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
 
 /* Top logo header */
-#siteHeader {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-#topLogo {
-  max-height: 80px;
-  cursor: pointer;
-}
+#siteHeader { text-align: center; margin-bottom: 20px; }
+#topLogo { max-height: 80px; cursor: pointer; }
 
 .bot { background: #fff; padding: 10px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 input { padding: 5px; width: 70%; margin-right: 5px; }
 button { padding: 5px 10px; margin-right:5px; }
 .fbx-preview { width:100px; height:100px; background:#ddd; display:inline-block; margin-right:5px; text-align:center; line-height:100px; }
+p { margin: 5px 0; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -44,10 +38,10 @@ button { padding: 5px 10px; margin-right:5px; }
 <script src="/espeakng-min.js"></script>
 
 <script>
-let tts; // eSpeakNG
+let tts;
 let availableVoices = [];
 
-// Initialize TTS and load browser voices
+// Initialize TTS and browser voices
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof eSpeakNG !== 'undefined') {
     tts = new eSpeakNG('/espeakng-worker.js', () => console.log('eSpeakNG ready'));
@@ -61,17 +55,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Find the correct browser voice based on bot's voice_id
+// Find browser voice
 function findBrowserVoice(voiceId) {
   let voice = availableVoices.find(v => v.name.toLowerCase().includes(voiceId.toLowerCase()));
   if (!voice) {
-    const lang = voiceId.replace('_','-'); // en_us → en-US
+    const lang = voiceId.replace('_','-'); // en_us -> en-US
     voice = availableVoices.find(v => v.lang.toLowerCase() === lang.toLowerCase());
   }
-  return voice || null; // fallback to null to use eSpeakNG
+  return voice || null;
 }
 
-// Speak using browser TTS first, fallback to eSpeakNG
+// Speak
 async function speak(reply, voiceId) {
   const browserVoice = findBrowserVoice(voiceId);
   if (browserVoice) {
@@ -80,13 +74,9 @@ async function speak(reply, voiceId) {
     window.speechSynthesis.speak(utter);
     return;
   }
-
   if (tts) {
-    try {
-      await tts.speak(reply, { voice: voiceId });
-    } catch(err) {
-      console.error('eSpeakNG TTS error:', err);
-    }
+    try { await tts.speak(reply, { voice: voiceId }); } 
+    catch(err) { console.error('eSpeakNG TTS error:', err); }
   } else {
     console.warn('No TTS available for voice:', voiceId);
   }
@@ -115,15 +105,30 @@ async function fetchBots() {
         const msg = input.value.trim();
         if (!msg) return;
 
-        const description = botDiv.dataset.description || '';
+        // Fetch bot data from dataset
+        const dialogue = botDiv.dataset.dialogue || "Hello!";
+        const expressions = JSON.parse(botDiv.dataset.expressions || '[]');
+        let memories = JSON.parse(botDiv.dataset.memories || '[]');
+        const dialogueState = JSON.parse(botDiv.dataset.dialogueState || '{}');
         const botVoiceId = botDiv.dataset.voice || 'en_us';
-        const reply = "You said: '" + msg + "'. " + description;
+
+        // Add user input to memories
+        memories.push({ user: "You", fact: msg, importance: 0.5 });
+        if (memories.length > 100) memories = memories.slice(-100); // keep last 100
+
+        // Construct reply: dialogue + expressions + optional state
+        let reply = dialogue;
+        if (expressions.length) reply += " [" + expressions.join(", ") + "]";
+        reply += " You said: '" + msg + "'";
 
         chat.innerHTML += `<div><strong>You:</strong> ${msg}</div>`;
         chat.innerHTML += `<div><strong>Bot:</strong> ${reply}</div>`;
 
         await speak(reply, botVoiceId);
         input.value = '';
+
+        // Save updated memories in dataset
+        botDiv.dataset.memories = JSON.stringify(memories);
       });
     });
   } catch(err) {
