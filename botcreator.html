@@ -17,13 +17,14 @@
   .success { background:#e6ffed; color:#256d1b; border:1px solid #8dd48a; }
   .error { background:#ffe6e6; color:#a12626; border:1px solid #f5a3a3; }
   .btn-small { width:auto; padding:6px 12px; margin-top:5px; }
-  .goalItem, .expressionItem { display:flex; gap:10px; margin-bottom:5px; }
-  .goalItem input, .expressionItem input { flex:1; }
+  .goalItem, .expressionItem, .memoryItem, .customizationItem { display:flex; gap:10px; margin-bottom:5px; }
+  .goalItem input, .expressionItem input, .memoryItem input, .customizationItem input { flex:1; }
 </style>
 </head>
 <body>
 
 <h1>🤖 Create Your AI Bot</h1>
+<p style="color:#555;">Note: Emotional state, memory, and goals are simulated. This bot will not autonomously reason or act.</p>
 
 <form id="botForm">
   <!-- Basic info -->
@@ -80,10 +81,34 @@
     <button type="button" id="addExpressionBtn" class="btn-small">Add Another Expression</button>
   </fieldset>
 
+  <!-- Memory -->
+  <fieldset>
+    <legend>Memory (optional)</legend>
+    <div id="memoryContainer">
+      <div class="memoryItem">
+        <input type="text" class="memoryFact" placeholder="Fact about user or world" />
+        <input type="number" class="memoryImportance" placeholder="Importance (0-1)" min="0" max="1" step="0.01" value="0.5" />
+      </div>
+    </div>
+    <button type="button" id="addMemoryBtn" class="btn-small">Add Another Memory</button>
+  </fieldset>
+
   <!-- Custom Dialogue -->
   <fieldset>
     <legend>Custom Dialogue (.txt)</legend>
     <input type="file" id="dialogueFile" accept=".txt" />
+  </fieldset>
+
+  <!-- Customization -->
+  <fieldset>
+    <legend>Bot Customization (optional)</legend>
+    <div id="customizationContainer">
+      <div class="customizationItem">
+        <input type="text" class="customizationKey" placeholder="Feature (e.g., hatColor)" />
+        <input type="text" class="customizationValue" placeholder="Value (e.g., red)" />
+      </div>
+    </div>
+    <button type="button" id="addCustomizationBtn" class="btn-small">Add Custom Feature</button>
   </fieldset>
 
   <button type="submit">Create Bot</button>
@@ -97,6 +122,7 @@ const output = document.getElementById('output');
 const voiceSelect = document.getElementById('voiceSelect');
 const fbxSelect = document.getElementById('fbxSelect');
 
+// Add goal
 const goalsContainer = document.getElementById('goalsContainer');
 document.getElementById('addGoalBtn').addEventListener('click', () => {
   const div = document.createElement('div');
@@ -106,12 +132,33 @@ document.getElementById('addGoalBtn').addEventListener('click', () => {
   goalsContainer.appendChild(div);
 });
 
+// Add expression
 const expressionsContainer = document.getElementById('expressionsContainer');
 document.getElementById('addExpressionBtn').addEventListener('click', () => {
   const div = document.createElement('div');
   div.className = 'expressionItem';
   div.innerHTML = `<input type="text" class="expressionInput" placeholder="Expression (use emoji)" />`;
   expressionsContainer.appendChild(div);
+});
+
+// Add memory
+const memoryContainer = document.getElementById('memoryContainer');
+document.getElementById('addMemoryBtn').addEventListener('click', () => {
+  const div = document.createElement('div');
+  div.className = 'memoryItem';
+  div.innerHTML = `<input type="text" class="memoryFact" placeholder="Fact about user or world" />
+                   <input type="number" class="memoryImportance" placeholder="Importance (0-1)" min="0" max="1" step="0.01" value="0.5" />`;
+  memoryContainer.appendChild(div);
+});
+
+// Add customization
+const customizationContainer = document.getElementById('customizationContainer');
+document.getElementById('addCustomizationBtn').addEventListener('click', () => {
+  const div = document.createElement('div');
+  div.className = 'customizationItem';
+  div.innerHTML = `<input type="text" class="customizationKey" placeholder="Feature (e.g., hatColor)" />
+                   <input type="text" class="customizationValue" placeholder="Value (e.g., red)" />`;
+  customizationContainer.appendChild(div);
 });
 
 // Load voices
@@ -174,6 +221,19 @@ form.addEventListener('submit', async e => {
 
   const expressions = Array.from(document.querySelectorAll('.expressionInput')).map(i => i.value.trim()).filter(Boolean);
 
+  const memories = Array.from(document.querySelectorAll('.memoryItem')).map(item => {
+    const fact = item.querySelector('.memoryFact').value.trim();
+    const importance = parseFloat(item.querySelector('.memoryImportance').value) || 0.5;
+    return fact ? { user: name, fact, importance } : null;
+  }).filter(Boolean);
+
+  const customization = {};
+  Array.from(document.querySelectorAll('.customizationItem')).forEach(item => {
+    const key = item.querySelector('.customizationKey').value.trim();
+    const value = item.querySelector('.customizationValue').value.trim();
+    if(key) customization[key] = value;
+  });
+
   // Read dialogue file
   let dialogueText = '';
   const dialogueFile = document.getElementById('dialogueFile').files[0];
@@ -199,7 +259,7 @@ form.addEventListener('submit', async e => {
         action:'createbot', 
         name, description, voice_id, fbx_model_id, paid_link,
         personality, emotional_state, goals, expressions,
-        dialogue: dialogueText
+        memories, dialogue: dialogueText, customization
       })
     });
     const data = await res.json();
@@ -223,6 +283,5 @@ form.addEventListener('submit', async e => {
 
 loadVoices();
 </script>
-
 </body>
 </html>
