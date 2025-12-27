@@ -77,14 +77,16 @@ export const handler = async (event) => {
       return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Failed to fetch emails' }) };
     }
 
-    // Sanitize email bodies
-    const safeEmails = emails.map((email) => ({
-      id: email.id,
-      from_user: DOMPurify.sanitize(email.from_user),
-      subject: DOMPurify.sanitize(email.subject),
-      body: DOMPurify.sanitize(email.body),
-      created_at: email.created_at,
-    }));
+    // Sanitize email fields safely
+    const safeEmails = emails.map((email) => {
+      return {
+        id: email.id,
+        from_user: DOMPurify.sanitize(String(email.from_user || '')),
+        subject: DOMPurify.sanitize(String(email.subject || '')),
+        body: DOMPurify.sanitize(String(email.body || '')),
+        created_at: email.created_at,
+      };
+    });
 
     return {
       statusCode: 200,
@@ -100,7 +102,7 @@ export const handler = async (event) => {
     console.error('getInbox error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ success: false, error: 'Internal server error' }),
+      body: JSON.stringify({ success: false, error: 'Internal server error', details: err.message }),
     };
   }
 };
