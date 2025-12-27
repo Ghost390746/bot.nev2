@@ -223,7 +223,7 @@ document.getElementById('viewBtn').addEventListener('click', async () => {
   videosList.innerHTML = 'Loading videos...';
 
   try {
-    const response = await fetch('/.netlify/functions/view-videos', { method: 'GET', credentials: 'same-origin' });
+    const response = await fetch('/.netlify/functions/view-videos', { method: 'GET', credentials: 'include' });
     if (!response.ok) { 
       const text = await response.text(); 
       videosList.innerText = 'Failed to load videos: ' + text; 
