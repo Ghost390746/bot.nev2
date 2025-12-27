@@ -50,7 +50,7 @@ export const handler = async (event) => {
     if (isNaN(pageSize) || pageSize < 1 || pageSize > 100) pageSize = 20;
     const offset = (page - 1) * pageSize;
 
-    // Fetch emails only
+    // Fetch emails
     const { data: emails, error: emailsError } = await supabase
       .from('emails')
       .select('id, from_user, subject, body, created_at')
@@ -60,7 +60,7 @@ export const handler = async (event) => {
 
     if (emailsError) throw emailsError;
 
-    // Fetch sender info for each email
+    // Fetch sender info
     const inbox = await Promise.all(emails.map(async e => {
       const { data: sender } = await supabase
         .from('users')
@@ -68,8 +68,7 @@ export const handler = async (event) => {
         .eq('email', e.from_user)
         .maybeSingle();
 
-      const lastOnline = new Date(sender?.online || 0);
-      const senderOnline = Date.now() - lastOnline.getTime() < 5 * 60 * 1000;
+      const senderOnline = sender?.online === true;
 
       return {
         id: e.id,
