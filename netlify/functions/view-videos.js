@@ -2,15 +2,16 @@ import { createClient } from '@supabase/supabase-js';
 import ffmpeg from 'fluent-ffmpeg';
 import { getVideoDurationInSeconds } from 'get-video-duration';
 import sharp from 'sharp';
-import fetch from 'node-fetch'; // ensure fetch is imported
+import fetch from 'node-fetch';
+import path from 'path';
 
-ffmpeg.setFfprobePath(path.join(process.cwd(), 'ffprobe')); // ffprobe binary in your function folder
+// Make sure you have the ffprobe binary in your function folder
+const ffprobePath = path.join(process.cwd(), 'ffprobe'); 
+ffmpeg.setFfprobePath(ffprobePath);
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-ffmpeg.setFfprobePath(ffprobePath.path);
 
 export const handler = async () => {
   try {
@@ -43,15 +44,15 @@ export const handler = async () => {
         // Fetch video as buffer
         const videoBuffer = await fetch(signedVideoData.signedUrl).then(res => res.arrayBuffer());
 
-        // Get duration (in seconds) using buffer
+        // Get duration using buffer and ffprobePath
         let duration = null;
         try {
-          duration = await getVideoDurationInSeconds(Buffer.from(videoBuffer));
+          duration = await getVideoDurationInSeconds(Buffer.from(videoBuffer), { ffprobePath });
         } catch (err) {
           console.error('Duration error', err);
         }
 
-        // Get resolution via ffmpeg (buffer input)
+        // Get resolution via ffmpeg
         let resolution = null;
         try {
           const metadata = await new Promise((resolve, reject) => {
@@ -71,7 +72,7 @@ export const handler = async () => {
           console.error('FFprobe error', err);
         }
 
-        // Cover thumbnail (resize in memory)
+        // Cover thumbnail
         let coverUrl = null;
         if (videoRecord.cover_url) {
           const { data: signedCoverData, error: signedCoverError } = await supabase
@@ -81,10 +82,9 @@ export const handler = async () => {
 
           if (!signedCoverError) {
             const coverBuffer = Buffer.from(await fetch(signedCoverData.signedUrl).then(r => r.arrayBuffer()));
-            const thumbBuffer = await sharp(coverBuffer)
+            await sharp(coverBuffer)
               .resize(320, 180)
               .toBuffer();
-            // You could upload this thumbnail back to Supabase if needed
             coverUrl = signedCoverData.signedUrl;
           }
         }
@@ -116,6 +116,7 @@ export const handler = async () => {
       body: JSON.stringify(videosWithUser.filter(v => v))
     };
   } catch (err) {
+    console.error(err);
     return { statusCode: 500, body: err.message };
   }
 };
