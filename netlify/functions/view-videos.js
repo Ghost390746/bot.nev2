@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import videoMetadata from 'video-metadata-thumbnails';
-import getVideoInfo from 'get-video-info';
 import probe from 'probe-image-size';
 import fetch from 'node-fetch';
 
@@ -43,18 +42,12 @@ export const handler = async () => {
 
         try {
           const meta = await videoMetadata(new Uint8Array(videoBuffer));
-          duration = meta.duration;
-          resolution = { width: meta.width, height: meta.height };
-        } catch {
-          try {
-            const info = await new Promise((res, rej) =>
-              getVideoInfo(Buffer.from(videoBuffer), (e, d) => e ? rej(e) : res(d))
-            );
-            duration = parseFloat(info.duration) || null;
-            resolution = info.width && info.height
-              ? { width: info.width, height: info.height }
-              : null;
-          } catch {}
+          duration = meta.duration ?? null;
+          resolution = meta.width && meta.height
+            ? { width: meta.width, height: meta.height }
+            : null;
+        } catch (err) {
+          console.warn('Metadata extraction failed:', err.message);
         }
 
         // ================= COVER =================
@@ -71,7 +64,6 @@ export const handler = async () => {
               await fetch(signedCover.signedUrl).then(r => r.arrayBuffer())
             );
 
-            // get image dimensions without decoding entire file
             try {
               const probed = await probe(coverBuffer);
               coverSize = { width: probed.width, height: probed.height };
