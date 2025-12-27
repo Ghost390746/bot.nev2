@@ -14,23 +14,6 @@ function getDeviceFingerprint(headers, frontendFingerprint) {
   return crypto.createHash('sha256').update(source).digest('hex');
 }
 
-// Decrypt session token (AES-GCM) like login.js
-function decryptSessionToken(encryptedToken) {
-  try {
-    const [ivHex, tagHex, encryptedHex] = encryptedToken.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const tag = Buffer.from(tagHex, 'hex');
-    const encrypted = Buffer.from(encryptedHex, 'hex');
-    const key = crypto.scryptSync(process.env.SESSION_SECRET, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
-    decipher.setAuthTag(tag);
-    const decrypted = decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8');
-    return decrypted;
-  } catch {
-    return null;
-  }
-}
-
 export const handler = async (event) => {
   try {
     // 🍪 Parse cookies
@@ -40,17 +23,11 @@ export const handler = async (event) => {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
-    // Decrypt session token
-    const sessionId = decryptSessionToken(rawToken);
-    if (!sessionId) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session token' }) };
-    }
-
-    // ✅ Lookup session using decrypted token
+    // ✅ Lookup session using raw token (no decryption)
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email, expires_at, fingerprint')
-      .eq('session_token', sessionId) // <-- use decrypted token
+      .eq('session_token', rawToken)
       .single();
 
     if (sessionError || !sessionData) {
