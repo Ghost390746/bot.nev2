@@ -9,7 +9,7 @@
     "start": "node netlify/functions/overpoweredbot.js",
     "explore": "node netlify/functions/generateExplore.js",
     "signup": "node netlify/functions/signup.js",
-    "login": "node netlify/functions/login.js",
+    "login": "node/netlify/functions/login.js",
     "profile": "node/netlify/functions/profileCreation.js"
   },
   "author": "William Isaiah Jones",
@@ -27,10 +27,11 @@
     "busboy": "^1.6.0",
     "tailwindcss": "^3.3.3",
     "daisyui": "^3.3.3",
-    "fluent-ffmpeg": "^2.1.2",
-    "ffprobe-static": "^3.1.0",
-    "sharp": "^0.32.5",
-    "get-video-duration": "^3.0.0"
+    "@ffmpeg/ffmpeg": "^0.12.0",             
+    "video-metadata-thumbnails": "^1.1.0",    
+    "get-video-info": "^1.2.1",               
+    "probe-image-size": "^7.1.0",             
+    "sharp": "^0.32.5"                        
   },
   "engines": {
     "node": ">=18"
