@@ -118,7 +118,10 @@ async function loadInbox() {
         <div class="email-content" style="display:flex; gap:10px; align-items:flex-start; padding:10px; border-bottom:1px solid #ddd;">
           <img src="${sanitize(sender.avatar_url)}" alt="${sanitize(sender.username)}" width="50" height="50" style="border-radius:50%;">
           <div>
-            <div><strong>From:</strong> ${sanitize(sender.username)} (${sanitize(sender.email)}) ${sender.online ? '🟢' : '⚪'}</div>
+            <div>
+              <strong>From:</strong> ${sanitize(sender.username)} (${sanitize(sender.email)}) 
+              <span style="color:${sender.online ? '#0f0' : '#888'}; font-weight:bold;">${sender.online ? '●' : '○'}</span>
+            </div>
             <div><strong>Subject:</strong> ${sanitize(e.subject) || '(none)'}</div>
             <div><strong>Date:</strong> ${new Date(e.created_at).toLocaleString()}</div>
             <div>${sanitize(e.body)}</div>
