@@ -111,6 +111,14 @@
     <button type="button" id="addCustomizationBtn" class="btn-small">Add Custom Feature</button>
   </fieldset>
 
+  <!-- Advanced Features -->
+  <fieldset>
+    <legend>Advanced Features</legend>
+    <label>
+      <input type="checkbox" id="advancedFeatures" /> Enable advanced reasoning & memory
+    </label>
+  </fieldset>
+
   <button type="submit">Create Bot</button>
 </form>
 
@@ -161,7 +169,7 @@ document.getElementById('addCustomizationBtn').addEventListener('click', () => {
   customizationContainer.appendChild(div);
 });
 
-// Load voices
+// Load voices dynamically
 async function loadVoices() {
   try {
     const res = await fetch('/.netlify/functions/get-voices', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include' });
@@ -191,6 +199,7 @@ fbxModels.forEach(m => {
   fbxSelect.appendChild(opt);
 });
 
+// Handle form submission
 form.addEventListener('submit', async e => {
   e.preventDefault();
 
@@ -234,12 +243,12 @@ form.addEventListener('submit', async e => {
     if(key) customization[key] = value;
   });
 
+  const advancedFeatures = document.getElementById('advancedFeatures').checked;
+
   // Read dialogue file
   let dialogueText = '';
   const dialogueFile = document.getElementById('dialogueFile').files[0];
-  if(dialogueFile){
-    dialogueText = await dialogueFile.text();
-  }
+  if(dialogueFile) dialogueText = await dialogueFile.text();
 
   if(!name || !description || !voice_id || !fbx_model_id){
     output.textContent = 'Please fill all required fields.';
@@ -259,7 +268,8 @@ form.addEventListener('submit', async e => {
         action:'createbot', 
         name, description, voice_id, fbx_model_id, paid_link,
         personality, emotional_state, goals, expressions,
-        memories, dialogue: dialogueText, customization
+        memories, dialogue: dialogueText, customization,
+        advancedFeatures
       })
     });
     const data = await res.json();
