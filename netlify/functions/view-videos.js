@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import ffmpeg from 'fluent-ffmpeg';
-import ffprobePath from 'ffprobe-static';
 import { getVideoDurationInSeconds } from 'get-video-duration';
 import sharp from 'sharp';
 import fetch from 'node-fetch'; // ensure fetch is imported
+
+ffmpeg.setFfprobePath(path.join(process.cwd(), 'ffprobe')); // ffprobe binary in your function folder
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
