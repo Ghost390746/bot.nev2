@@ -46,11 +46,11 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session token' }) };
     }
 
-    // Lookup session in Supabase
+    // ✅ Lookup session using decrypted token
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .select('user_email, expires_at, fingerprint')
-      .eq('session_token', rawToken)
+      .eq('session_token', sessionId) // <-- use decrypted token
       .single();
 
     if (sessionError || !sessionData) {
@@ -104,7 +104,11 @@ export const handler = async (event) => {
         from: {
           email: sender.email || 'Unknown',
           username: sender.username || sender.email || 'Unknown',
-          avatar_url: sender.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(sender.username || sender.email || 'user')}.svg`,
+          avatar_url:
+            sender.avatar_url ||
+            `https://avatars.dicebear.com/api/initials/${encodeURIComponent(
+              sender.username || sender.email || 'user'
+            )}.svg`,
           online: senderOnline,
         },
       };
