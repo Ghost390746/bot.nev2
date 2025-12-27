@@ -1,16 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
-import ffmpeg from 'fluent-ffmpeg';
-import { getVideoDurationInSeconds } from 'get-video-duration';
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+import videoMetadata from 'video-metadata-thumbnails';
+import getVideoInfo from 'get-video-info';
+import probe from 'probe-image-size';
 import sharp from 'sharp';
 import fetch from 'node-fetch';
-import path from 'path';
 
-// Make sure you have the ffprobe binary in your function folder
-const ffprobePath = path.join(process.cwd(), 'ffprobe'); 
-ffmpeg.setFfprobePath(ffprobePath);
+// Initialize WebAssembly FFmpeg
+const ffmpeg = createFFmpeg({ log: true });
+await ffmpeg.load();
 
+// Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const handler = async () => {
@@ -41,35 +43,29 @@ export const handler = async () => {
 
         if (signedVideoError) return null;
 
-        // Fetch video as buffer
+        // Fetch video buffer
         const videoBuffer = await fetch(signedVideoData.signedUrl).then(res => res.arrayBuffer());
 
-        // Get duration using buffer and ffprobePath
+        // Get metadata using video-metadata-thumbnails
         let duration = null;
-        try {
-          duration = await getVideoDurationInSeconds(Buffer.from(videoBuffer), { ffprobePath });
-        } catch (err) {
-          console.error('Duration error', err);
-        }
-
-        // Get resolution via ffmpeg
         let resolution = null;
         try {
-          const metadata = await new Promise((resolve, reject) => {
-            ffmpeg(Buffer.from(videoBuffer))
-              .ffprobe((err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-              });
-          });
-          if (metadata.streams && metadata.streams[0]) {
-            resolution = {
-              width: metadata.streams[0].width,
-              height: metadata.streams[0].height
-            };
-          }
+          const metadata = await videoMetadata(new Uint8Array(videoBuffer));
+          duration = metadata.duration;
+          resolution = { width: metadata.width, height: metadata.height };
         } catch (err) {
-          console.error('FFprobe error', err);
+          console.error('video-metadata-thumbnails error', err);
+        }
+
+        // Optional: fallback using get-video-info
+        if (!duration || !resolution) {
+          try {
+            const info = await getVideoInfo(Buffer.from(videoBuffer));
+            duration = info.duration || duration;
+            resolution = resolution || { width: info.width, height: info.height };
+          } catch (err) {
+            console.error('get-video-info error', err);
+          }
         }
 
         // Cover thumbnail
@@ -82,6 +78,15 @@ export const handler = async () => {
 
           if (!signedCoverError) {
             const coverBuffer = Buffer.from(await fetch(signedCoverData.signedUrl).then(r => r.arrayBuffer()));
+            
+            // Optional: get dimensions with probe-image-size
+            try {
+              const imageMeta = probe.sync(coverBuffer);
+              // imageMeta.width & imageMeta.height if needed
+            } catch (err) {
+              console.error('probe-image-size error', err);
+            }
+
             await sharp(coverBuffer)
               .resize(320, 180)
               .toBuffer();
