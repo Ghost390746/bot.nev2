@@ -29,7 +29,7 @@
     "daisyui": "^3.3.3",
     "@ffmpeg/ffmpeg": "^0.12.0",             
     "video-metadata-thumbnails": "^1.1.0",    
-    "get-video-info": "^1.2.1",               
+    "get-video-info": "^1.1.0",               
     "probe-image-size": "^7.1.0",             
     "sharp": "^0.32.5"                        
   },
