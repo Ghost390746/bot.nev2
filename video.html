@@ -57,11 +57,11 @@
     #searchInput::placeholder { color: #aaa; }
     #totalVideos { margin-bottom: 1rem; font-weight: bold; }
 
-    /* Vertical list of videos */
+    /* Big module style for videos (hero card style) */
     #videosList {
       display: flex;
       flex-direction: column;
-      gap: 2rem;
+      gap: 3rem;
     }
     .video-item {
       position: relative;
@@ -71,16 +71,18 @@
       cursor: pointer;
       transition: transform 0.2s ease, box-shadow 0.3s ease;
       width: 100%;
+      max-width: 100%;
       padding: 1rem;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* subtle shadow */
     }
     .video-item:hover {
       transform: scale(1.03);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.7); /* stronger shadow on hover */
     }
     .video-item video {
       width: 100%;
       height: auto;
+      display: block;
       border-radius: 12px;
       background-color: black;
       margin-bottom: 0.5rem;
@@ -118,7 +120,7 @@
       border: none;
       cursor: pointer;
     }
-    #loadMoreBtn:hover { background-color: #005fa3; display: none; }
+    #loadMoreBtn:hover { background-color: #005fa3; }
 
     /* Full-screen modal */
     #videoModal {
@@ -237,8 +239,16 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
         <source src="${data.videoUrl}" type="video/mp4">
       </video>
     `;
-  } catch (err) { console.error(err); document.getElementById('result').innerText = 'Upload failed: ' + err.message; }
-  finally { progressBar.style.display = 'none'; }
+
+    // Refresh video list after upload
+    loadVideos(true);
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('result').innerText = 'Upload failed: ' + err.message;
+  } finally {
+    progressBar.style.display = 'none';
+  }
 });
 
 // Render videos
@@ -246,7 +256,7 @@ function renderVideos(videos) {
   const list = document.getElementById('videosList');
   const searchTerm = document.getElementById('searchInput').value.toLowerCase();
   let filtered = videos.filter(v => 
-    (v.user?.email.toLowerCase().includes(searchTerm)) || 
+    (v.user?.email?.toLowerCase().includes(searchTerm)) || 
     (v.name?.toLowerCase().includes(searchTerm))
   );
 
@@ -280,6 +290,7 @@ function renderVideos(videos) {
     div.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime=0; durationSpan.style.opacity='0'; });
 
     vid.addEventListener('click', () => openModal(video.videoUrl));
+
     const shareBtn = div.querySelector('.shareBtn');
     shareBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(video.videoUrl)
@@ -297,14 +308,22 @@ function renderVideos(videos) {
 async function loadVideos(reset=false) {
   if (reset) { displayedCount=0; document.getElementById('videosList').innerHTML=''; }
   if (!videosCache.length || reset) {
-    const response = await fetch('/.netlify/functions/view-videos', { method:'GET', credentials:'same-origin' });
-    if (!response.ok) { const text = await response.text(); document.getElementById('videosList').innerText='Failed: '+text; return; }
-    videosCache = (await response.json()).sort((a,b)=> new Date(b.uploaded_at)-new Date(a.uploaded_at));
+    try {
+      const response = await fetch('/.netlify/functions/view-videos', { method:'GET', credentials:'same-origin' });
+      if (!response.ok) { const text = await response.text(); document.getElementById('videosList').innerText='Failed: '+text; return; }
+      videosCache = (await response.json()).sort((a,b)=> new Date(b.uploaded_at)-new Date(a.uploaded_at));
+    } catch(err) {
+      console.error(err);
+      document.getElementById('videosList').innerText='Failed to fetch videos';
+      return;
+    }
   }
   renderVideos(videosCache);
 }
 
-document.getElementById('viewBtn')?.addEventListener('click', ()=>loadVideos(true));
+// Auto-load videos on page load
+window.addEventListener('DOMContentLoaded', () => loadVideos());
+
 document.getElementById('loadMoreBtn').addEventListener('click', ()=>renderVideos(videosCache));
 document.getElementById('searchInput').addEventListener('input', ()=>{ displayedCount=0; document.getElementById('videosList').innerHTML=''; renderVideos(videosCache); });
 </script>
