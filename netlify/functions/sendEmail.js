@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import cookie from 'cookie';
-import crypto from 'crypto';
 
 const supabase = createClient(
   process.env.SUPABASE_URL, 
@@ -12,8 +11,8 @@ const supabase = createClient(
 /* =========================
    CONFIG
 ========================= */
-const MAX_EMAILS_PER_5_HOURS = 15;  // Max emails in a rolling 5-hour window
-const MAX_EMAILS_PER_DAY = 30;      // Max emails per 24 hours
+const MAX_EMAILS_PER_5_HOURS = 50;  // More realistic sending limit
+const MAX_EMAILS_PER_DAY = 200;
 const MAX_LINKS = 3;
 
 /* =========================
@@ -139,7 +138,7 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
     }
 
-    /* ---------- Rate limiting ---------- */
+    /* ---------- Rate limiting (ignore spam attempts) ---------- */
     const now = new Date();
     const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString();
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -149,7 +148,7 @@ export const handler = async (event) => {
       .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
       .gte('created_at', fiveHoursAgo)
-      .not('spam_score', 'gte', 5); // ignore spam
+      .lt('spam_score', 5); // only count non-spam emails
 
     if (fiveHourCount >= MAX_EMAILS_PER_5_HOURS) {
       return { statusCode: 429, body: JSON.stringify({ success: false, error: '5-hour limit reached. Try later.' }) };
@@ -160,7 +159,7 @@ export const handler = async (event) => {
       .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
       .gte('created_at', oneDayAgo)
-      .not('spam_score', 'gte', 5);
+      .lt('spam_score', 5);
 
     if (dayCount >= MAX_EMAILS_PER_DAY) {
       return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached. Try tomorrow.' }) };
@@ -172,7 +171,16 @@ export const handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Message flagged as spam' }) };
     }
 
-    /* ---------- Store ---------- */
+    /* ---------- Send (NO SPOOFING) ---------- */
+    await transporter.sendMail({
+      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
+      to: recipientData.email,
+      replyTo: senderData.email,
+      subject,
+      text: `${senderData.username} says:\n\n${body}`
+    });
+
+    /* ---------- Store AFTER success ---------- */
     await supabase.from('emails').insert({
       id: uuidv4(),
       from_user,
@@ -182,15 +190,6 @@ export const handler = async (event) => {
       ip_address: ip,
       spam_score: score,
       created_at: new Date().toISOString()
-    });
-
-    /* ---------- Send (NO SPOOFING) ---------- */
-    await transporter.sendMail({
-      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
-      to: recipientData.email,
-      replyTo: senderData.email,
-      subject,
-      text: `${senderData.username} says:\n\n${body}`
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true }) };
