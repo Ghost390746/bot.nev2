@@ -23,6 +23,7 @@
     .email-content { flex: 1; }
     .email strong { display: inline-block; width: 80px; }
     #avatarPreview { width: 32px; height: 32px; border-radius: 50%; margin-top: 5px; }
+    #blockedList button { padding: 2px 6px; font-size: 12px; margin-left: 5px; }
   </style>
 </head>
 <body>
@@ -48,6 +49,14 @@
 
   <h2>Inbox</h2>
   <div id="inbox">Loading emails...</div>
+
+  <h2>Manage Blocked Users</h2>
+  <label for="blockUserEmail">Block User by Email:</label>
+  <input type="text" id="blockUserEmail" placeholder="user@example.com">
+  <button id="blockBtn">Block</button>
+
+  <h3>Currently Blocked Users:</h3>
+  <ul id="blockedList">Loading blocked users...</ul>
 </main>
 
 <script>
@@ -59,6 +68,10 @@ const sendBtn = document.getElementById('sendBtn');
 const output = document.getElementById('output');
 const warning = document.getElementById('warning');
 const inboxDiv = document.getElementById('inbox');
+
+const blockUserEmailInput = document.getElementById('blockUserEmail');
+const blockBtn = document.getElementById('blockBtn');
+const blockedList = document.getElementById('blockedList');
 
 function sanitize(str) {
   const temp = document.createElement('div');
@@ -127,31 +140,8 @@ async function loadInbox() {
   }
 }
 
-// Real-time spam & rate-limit check
-async function checkWarnings() {
-  const to_user = toUserSelect.value;
-  const subject = subjectInput.value.trim();
-  const body = bodyInput.value.trim();
-  if (!to_user || !body) { warning.textContent = ''; return; }
-
-  try {
-    const res = await fetch('/.netlify/functions/sendEmail', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ to_user, subject, body, preview: true }) // backend should skip send if preview=true
-    });
-    const data = await res.json();
-    if (data.success) { warning.textContent = ''; }
-    else { warning.textContent = '⚠️ ' + (data.error || 'Message may be blocked'); }
-  } catch (err) {
-    warning.textContent = '';
-  }
-}
-
-let isSending = false;
-
 // Send email
+let isSending = false;
 sendBtn.addEventListener('click', async () => {
   if (isSending) return;
 
@@ -165,7 +155,6 @@ sendBtn.addEventListener('click', async () => {
   }
 
   isSending = true;
-
   try {
     const res = await fetch('/.netlify/functions/sendEmail', {
       method: 'POST',
@@ -173,7 +162,6 @@ sendBtn.addEventListener('click', async () => {
       credentials: 'include',
       body: JSON.stringify({ to_user, subject, body })
     });
-
     const data = await res.json();
 
     if (data.success) {
@@ -184,7 +172,6 @@ sendBtn.addEventListener('click', async () => {
     } else {
       output.textContent = '⚠️ Error: ' + (data.error || 'Unknown error');
     }
-
   } catch (err) {
     console.error('Send email failed:', err);
     output.textContent = '❌ Failed to send email.';
@@ -193,15 +180,73 @@ sendBtn.addEventListener('click', async () => {
   }
 });
 
-// ❌ REMOVE THESE — they caused ghost sends
-// subjectInput.addEventListener('input', checkWarnings);
-// bodyInput.addEventListener('input', checkWarnings);
-// toUserSelect.addEventListener('change', checkWarnings);
+// BLOCK/UNBLOCK FUNCTIONS
 
-// Initialize
+async function loadBlockedUsers() {
+  try {
+    const res = await fetch('/.netlify/functions/sendEmail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ action: 'listBlocked' })
+    });
+    const data = await res.json();
+    if (!data.success) { blockedList.innerHTML = '<li>Failed to load blocked users</li>'; return; }
+
+    blockedList.innerHTML = '';
+    if (!data.blocked.length) blockedList.innerHTML = '<li>No blocked users</li>';
+
+    data.blocked.forEach(email => {
+      const li = document.createElement('li');
+      li.textContent = email + ' ';
+      const unblockBtn = document.createElement('button');
+      unblockBtn.textContent = 'Unblock';
+      unblockBtn.onclick = async () => {
+        const res = await fetch('/.netlify/functions/sendEmail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'unblock', target_email: email })
+        });
+        const result = await res.json();
+        if (result.success) loadBlockedUsers();
+      };
+      li.appendChild(unblockBtn);
+      blockedList.appendChild(li);
+    });
+  } catch (err) {
+    console.error(err);
+    blockedList.innerHTML = '<li>Error loading blocked users</li>';
+  }
+}
+
+// Block a new user
+blockBtn.addEventListener('click', async () => {
+  const email = blockUserEmailInput.value.trim();
+  if (!email) return;
+  try {
+    const res = await fetch('/.netlify/functions/sendEmail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ action: 'block', target_email: email })
+    });
+    const data = await res.json();
+    if (data.success) {
+      blockUserEmailInput.value = '';
+      loadBlockedUsers();
+    } else {
+      alert('Failed to block user: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// INITIALIZE
 loadUsers();
 loadInbox();
-
+loadBlockedUsers();
 </script>
 
 </body>
