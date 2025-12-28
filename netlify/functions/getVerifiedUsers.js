@@ -39,22 +39,22 @@ export const handler = async (event) => {
       };
     }
 
-    // ✅ Get all verified users excluding self with avatar & online (boolean)
+    // ✅ Get all verified users excluding self with avatar & online boolean
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('email, username, avatar_url, online')
+      .select('email, username, avatar_url, online') // online is boolean
       .eq('verified', true)
       .neq('email', sessionData.user_email)
       .order('email', { ascending: true });
 
     if (usersError) throw usersError;
 
-    // No need to calculate online, it's already a boolean
+    // Map users for frontend
     const mappedUsers = users.map(u => ({
       email: u.email,
       username: u.username || u.email,
       avatar_url: u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.username || u.email)}.svg`,
-      online: u.online
+      online: u.online // boolean directly from database
     }));
 
     return {
