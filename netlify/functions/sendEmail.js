@@ -4,15 +4,15 @@ import nodemailer from 'nodemailer';
 import cookie from 'cookie';
 
 const supabase = createClient(
-  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 /* =========================
    CONFIG
 ========================= */
-const MAX_EMAILS_PER_5_HOURS = 50;
-const MAX_EMAILS_PER_DAY = 200;
+const MAX_EMAILS_PER_30_MINUTES = 30;
+const EMAIL_RETENTION_MS = 60 * 60 * 1000; // 1 hour
 const MAX_LINKS = 3;
 const NEW_SYSTEM_START = new Date('2025-12-27T00:00:00Z').toISOString();
 
@@ -55,47 +55,31 @@ const spamScore = (text) => {
   return score;
 };
 
-const getRateLimits = async (from_user, ip, since) => {
-  const { count: userCount } = await supabase
-    .from('emails')
-    .select('id', { count: 'exact', head: true })
-    .eq('from_user', from_user)
-    .gte('created_at', since);
+/* =========================
+   AUTH HELPER
+========================= */
+const getSessionUser = async (event) => {
+  const cookies = cookie.parse(event.headers.cookie || '');
+  const session_token = cookies['__Host-session_secure'];
+  if (!session_token) return null;
 
-  const { count: ipCount } = await supabase
-    .from('emails')
-    .select('id', { count: 'exact', head: true })
-    .eq('ip_address', ip)
-    .gte('created_at', since);
+  const { data: sessionData } = await supabase
+    .from('sessions')
+    .select('user_email, expires_at')
+    .eq('session_token', session_token)
+    .single();
 
-  return { userCount, ipCount };
+  if (!sessionData || new Date(sessionData.expires_at) < new Date()) return null;
+  return sessionData.user_email;
 };
 
 /* =========================
-   HANDLER
+   EMAIL HANDLER
 ========================= */
-export const handler = async (event) => {
+export const sendEmail = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
-    }
-
-    const cookies = cookie.parse(event.headers.cookie || '');
-    const session_token = cookies['__Host-session_secure'];
-    if (!session_token) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
-
-    const { data: sessionData } = await supabase
-      .from('sessions')
-      .select('user_email, expires_at')
-      .eq('session_token', session_token)
-      .single();
-
-    if (!sessionData || new Date(sessionData.expires_at) < new Date()) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
-    }
-
-    const from_user = sessionData.user_email;
-    const ip = getClientIP(event);
+    const from_user = await getSessionUser(event);
+    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
 
     const { data: senderData } = await supabase
       .from('users')
@@ -108,7 +92,7 @@ export const handler = async (event) => {
     }
 
     let payload;
-    try { payload = JSON.parse(event.body || '{}'); } 
+    try { payload = JSON.parse(event.body || '{}'); }
     catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
 
     let { to_user, subject, body } = payload;
@@ -116,9 +100,7 @@ export const handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input' }) };
     }
 
-    if (!isValidEmail(to_user)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
-    }
+    if (!isValidEmail(to_user)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
 
     subject = sanitize(subject || 'New message');
     body = sanitize(body);
@@ -133,41 +115,39 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
     }
 
+    // Block check
     const { data: block } = await supabase
       .from('blocked_users')
       .select('id')
       .eq('blocker', to_user)
       .eq('blocked', from_user)
       .maybeSingle();
-
     if (block) return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
 
-    const score = spamScore(`${subject} ${body}`);
-    if (score >= 5) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Message flagged as spam' }) };
-
     const now = new Date();
-    const fiveHoursAgo = new Date(Math.max(now.getTime() - 5 * 60 * 60 * 1000, new Date(NEW_SYSTEM_START).getTime())).toISOString();
-    const oneDayAgo = new Date(Math.max(now.getTime() - 24 * 60 * 60 * 1000, new Date(NEW_SYSTEM_START).getTime())).toISOString();
+    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+    const retentionThreshold = new Date(now.getTime() - EMAIL_RETENTION_MS).toISOString();
 
-    const { userCount: last5hUser, ipCount: last5hIP } = await getRateLimits(from_user, ip, fiveHoursAgo);
-    const { userCount: lastDayUser } = await getRateLimits(from_user, ip, oneDayAgo);
+    // Delete old emails
+    await supabase.from('emails').delete().lt('created_at', retentionThreshold);
 
-    if (last5hUser >= MAX_EMAILS_PER_5_HOURS || last5hIP >= MAX_EMAILS_PER_5_HOURS) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: '5-hour limit reached. Try later.' }) };
+    // 30-min email limit
+    const { count: sentCount } = await supabase
+      .from('emails')
+      .select('id', { count: 'exact', head: true })
+      .eq('from_user', from_user)
+      .gte('created_at', thirtyMinutesAgo);
+    if (sentCount >= MAX_EMAILS_PER_30_MINUTES) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: '30-minute limit reached. Try later.' }) };
     }
 
-    if (lastDayUser >= MAX_EMAILS_PER_DAY) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached. Try tomorrow.' }) };
-    }
-
-    // Prevent repeated messages
+    // Repeated message
     const { count: repeated } = await supabase
       .from('emails')
       .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
       .eq('body', body)
-      .gte('created_at', fiveHoursAgo);
-
+      .gte('created_at', thirtyMinutesAgo);
     if (repeated > 0) {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Repeated message detected' }) };
     }
@@ -182,22 +162,83 @@ export const handler = async (event) => {
       html: `<p><strong>${senderData.username} says:</strong></p><p>${body}</p>`
     });
 
-    // Store email record
+    // Store email
     await supabase.from('emails').insert({
       id: uuidv4(),
       from_user,
       to_user,
       subject,
       body,
-      ip_address: ip,
-      spam_score: score,
+      ip_address: getClientIP(event),
+      spam_score: spamScore(`${subject} ${body}`),
       created_at: now.toISOString()
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true }) };
-
   } catch (err) {
     console.error('sendEmail error:', err);
+    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+  }
+};
+
+/* =========================
+   BLOCK HANDLERS
+========================= */
+export const blockUser = async (event) => {
+  try {
+    const from_user = await getSessionUser(event);
+    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+
+    let payload;
+    try { payload = JSON.parse(event.body || '{}'); }
+    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
+
+    const { target_email } = payload;
+    if (!target_email || !isValidEmail(target_email)) return { statusCode:400, body: JSON.stringify({ success: false, error:'Invalid email' }) };
+
+    // Insert block
+    await supabase.from('blocked_users').upsert({ blocker: from_user, blocked: target_email });
+    return { statusCode: 200, body: JSON.stringify({ success: true, message: `Blocked ${target_email}` }) };
+  } catch (err) {
+    console.error('blockUser error:', err);
+    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+  }
+};
+
+export const unblockUser = async (event) => {
+  try {
+    const from_user = await getSessionUser(event);
+    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+
+    let payload;
+    try { payload = JSON.parse(event.body || '{}'); }
+    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
+
+    const { target_email } = payload;
+    if (!target_email || !isValidEmail(target_email)) return { statusCode:400, body: JSON.stringify({ success: false, error:'Invalid email' }) };
+
+    // Delete block
+    await supabase.from('blocked_users').delete().eq('blocker', from_user).eq('blocked', target_email);
+    return { statusCode: 200, body: JSON.stringify({ success: true, message: `Unblocked ${target_email}` }) };
+  } catch (err) {
+    console.error('unblockUser error:', err);
+    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+  }
+};
+
+export const listBlockedUsers = async (event) => {
+  try {
+    const from_user = await getSessionUser(event);
+    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+
+    const { data } = await supabase
+      .from('blocked_users')
+      .select('blocked')
+      .eq('blocker', from_user);
+
+    return { statusCode: 200, body: JSON.stringify({ success: true, blocked: data.map(d => d.blocked) }) };
+  } catch (err) {
+    console.error('listBlockedUsers error:', err);
     return { statusCode: 500, body: JSON.stringify({ success: false }) };
   }
 };
