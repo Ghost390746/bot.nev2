@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Email System</title>
+  <title>Email System — Botnev</title>
   <link rel="icon" type="image/png" sizes="32x32" href="https://botnet2.netlify.app/assets/logo.png">
   <link rel="icon" type="image/png" sizes="16x16" href="https://botnet2.netlify.app/assets/logo.png">
   <style>
@@ -15,7 +15,8 @@
     textarea { height: 150px; resize: vertical; }
     button { margin-top: 15px; padding: 10px 20px; background-color: #ff0000; color: #000; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
     button:hover { background-color: #aa0000; }
-    #output { margin-top: 20px; padding: 10px; border: 1px solid #00ff00; min-height: 20px; white-space: pre-wrap; }
+    #output { margin-top: 10px; padding: 10px; border: 1px solid #00ff00; min-height: 20px; white-space: pre-wrap; }
+    #warning { margin-top: 5px; padding: 8px; border: 1px solid #ffaa00; color: #ffaa00; font-weight: bold; }
     #inbox { margin-top: 30px; }
     .email { border: 1px solid #00ff00; padding: 10px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 10px; }
     .email img { width: 32px; height: 32px; border-radius: 50%; }
@@ -42,6 +43,7 @@
   <textarea id="body" maxlength="2000"></textarea>
 
   <button id="sendBtn">Send Email</button>
+  <div id="warning"></div>
   <div id="output"></div>
 
   <h2>Inbox</h2>
@@ -55,11 +57,13 @@ const subjectInput = document.getElementById('subject');
 const bodyInput = document.getElementById('body');
 const sendBtn = document.getElementById('sendBtn');
 const output = document.getElementById('output');
+const warning = document.getElementById('warning');
 const inboxDiv = document.getElementById('inbox');
 
 function sanitize(str) {
-  if (!str) return '';
-  return str.replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;');
+  const temp = document.createElement('div');
+  temp.textContent = str || '';
+  return temp.innerHTML;
 }
 
 // Load users for sending emails
@@ -70,7 +74,6 @@ async function loadUsers() {
     if (!data.success) throw new Error('Failed to load users');
 
     toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
-
     data.users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.email;
@@ -96,22 +99,13 @@ async function loadInbox() {
   try {
     const res = await fetch('/.netlify/functions/Inbox', { method: 'GET', credentials: 'include' });
     const data = await res.json();
-
-    if (!data.success) {
-      inboxDiv.textContent = 'Failed to load inbox';
-      return;
-    }
-
-    if (!data.emails.length) {
-      inboxDiv.textContent = 'No emails';
-      return;
-    }
+    if (!data.success) { inboxDiv.textContent = 'Failed to load inbox'; return; }
+    if (!data.emails.length) { inboxDiv.textContent = 'No emails'; return; }
 
     inboxDiv.innerHTML = '';
     data.emails.forEach(e => {
       const div = document.createElement('div');
       div.className = 'email';
-
       const sender = e.from || { username: 'Unknown', email: '', avatar_url: '', online: false };
 
       div.innerHTML = `
@@ -127,20 +121,33 @@ async function loadInbox() {
       `;
       inboxDiv.appendChild(div);
     });
-
   } catch (err) {
     console.error('Failed to load inbox:', err);
     inboxDiv.textContent = 'Failed to load inbox';
   }
 }
 
-// Simple sanitizer for frontend display
-function sanitize(str) {
-  const temp = document.createElement('div');
-  temp.textContent = str || '';
-  return temp.innerHTML;
-}
+// Real-time spam & rate-limit check
+async function checkWarnings() {
+  const to_user = toUserSelect.value;
+  const subject = subjectInput.value.trim();
+  const body = bodyInput.value.trim();
+  if (!to_user || !body) { warning.textContent = ''; return; }
 
+  try {
+    const res = await fetch('/.netlify/functions/sendEmail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ to_user, subject, body, preview: true }) // backend should skip send if preview=true
+    });
+    const data = await res.json();
+    if (data.success) { warning.textContent = ''; }
+    else { warning.textContent = '⚠️ ' + (data.error || 'Message may be blocked'); }
+  } catch (err) {
+    warning.textContent = '';
+  }
+}
 
 // Send email
 sendBtn.addEventListener('click', async () => {
@@ -158,18 +165,23 @@ sendBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.success) {
-      output.textContent = 'Email sent successfully.';
+      output.textContent = '✅ Email sent successfully.';
       subjectInput.value = '';
       bodyInput.value = '';
       loadInbox();
     } else {
-      output.textContent = 'Error: ' + (data.error || 'Unknown error');
+      output.textContent = '⚠️ Error: ' + (data.error || 'Unknown error');
     }
   } catch (err) {
     console.error('Send email failed:', err);
-    output.textContent = 'Failed to send email.';
+    output.textContent = '❌ Failed to send email.';
   }
 });
+
+// Trigger real-time warning check
+subjectInput.addEventListener('input', checkWarnings);
+bodyInput.addEventListener('input', checkWarnings);
+toUserSelect.addEventListener('change', checkWarnings);
 
 // Initialize
 loadUsers();
