@@ -71,13 +71,19 @@ const getSessionUser = async (event) => {
 };
 
 /* =========================
+   UTILITY FOR RESPONSE
+========================= */
+const jsonResponse = (obj, status = 200) =>
+  new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
+
+/* =========================
    EMAIL HANDLER
 ========================= */
 const sendEmail = async (event) => {
   try {
     const from_user = await getSessionUser(event);
     if (!from_user)
-      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+      return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
 
     const { data: senderData } = await supabase
       .from('users')
@@ -86,18 +92,18 @@ const sendEmail = async (event) => {
       .single();
 
     if (!senderData || !senderData.verified)
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified' }) };
+      return jsonResponse({ success: false, error: 'Sender not verified' }, 403);
 
     let payload;
     try { payload = JSON.parse(event.body || '{}'); }
-    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
+    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
 
     let { to_user, subject, body } = payload;
     if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200))
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input' }) };
+      return jsonResponse({ success: false, error: 'Invalid input' }, 400);
 
     if (!isValidEmail(to_user))
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
+      return jsonResponse({ success: false, error: 'Invalid recipient email' }, 400);
 
     subject = sanitize(subject || 'New message');
     body = sanitize(body);
@@ -109,7 +115,7 @@ const sendEmail = async (event) => {
       .single();
 
     if (!recipientData || !recipientData.verified)
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
+      return jsonResponse({ success: false, error: 'Recipient invalid' }, 403);
 
     const { data: block } = await supabase
       .from('blocked_users')
@@ -119,7 +125,7 @@ const sendEmail = async (event) => {
       .maybeSingle();
 
     if (block)
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
+      return jsonResponse({ success: false, error: 'Recipient has blocked you' }, 403);
 
     const now = new Date();
     const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
@@ -136,7 +142,7 @@ const sendEmail = async (event) => {
       .gte('created_at', thirtyMinutesAgo);
 
     if (sentCount >= MAX_EMAILS_PER_30_MINUTES)
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: '30-minute limit reached. Try later.' }) };
+      return jsonResponse({ success: false, error: '30-minute limit reached. Try later.' }, 429);
 
     // Repeated message
     const { count: repeated } = await supabase
@@ -147,7 +153,7 @@ const sendEmail = async (event) => {
       .gte('created_at', thirtyMinutesAgo);
 
     if (repeated > 0)
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Repeated message detected' }) };
+      return jsonResponse({ success: false, error: 'Repeated message detected' }, 400);
 
     // Send email
     await transporter.sendMail({
@@ -171,10 +177,10 @@ const sendEmail = async (event) => {
       created_at: now.toISOString()
     });
 
-    return { statusCode: 200, body: JSON.stringify({ success: true }) };
+    return jsonResponse({ success: true });
   } catch (err) {
     console.error('sendEmail error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+    return jsonResponse({ success: false }, 500);
   }
 };
 
@@ -184,57 +190,59 @@ const sendEmail = async (event) => {
 const blockUser = async (event) => {
   try {
     const from_user = await getSessionUser(event);
-    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
 
     let payload;
     try { payload = JSON.parse(event.body || '{}'); }
-    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
+    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
 
     const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid email' }) };
+    if (!target_email || !isValidEmail(target_email))
+      return jsonResponse({ success: false, error: 'Invalid email' }, 400);
 
     await supabase.from('blocked_users').upsert({ blocker: from_user, blocked: target_email });
-    return { statusCode: 200, body: JSON.stringify({ success: true, message: `Blocked ${target_email}` }) };
+    return jsonResponse({ success: true, message: `Blocked ${target_email}` });
   } catch (err) {
     console.error('blockUser error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+    return jsonResponse({ success: false }, 500);
   }
 };
 
 const unblockUser = async (event) => {
   try {
     const from_user = await getSessionUser(event);
-    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
 
     let payload;
     try { payload = JSON.parse(event.body || '{}'); }
-    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
+    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
 
     const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid email' }) };
+    if (!target_email || !isValidEmail(target_email))
+      return jsonResponse({ success: false, error: 'Invalid email' }, 400);
 
     await supabase.from('blocked_users').delete().eq('blocker', from_user).eq('blocked', target_email);
-    return { statusCode: 200, body: JSON.stringify({ success: true, message: `Unblocked ${target_email}` }) };
+    return jsonResponse({ success: true, message: `Unblocked ${target_email}` });
   } catch (err) {
     console.error('unblockUser error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+    return jsonResponse({ success: false }, 500);
   }
 };
 
 const listBlockedUsers = async (event) => {
   try {
     const from_user = await getSessionUser(event);
-    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
 
     const { data } = await supabase
       .from('blocked_users')
       .select('blocked')
       .eq('blocker', from_user);
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, blocked: data.map(d => d.blocked) }) };
+    return jsonResponse({ success: true, blocked: data.map(d => d.blocked) });
   } catch (err) {
     console.error('listBlockedUsers error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false }) };
+    return jsonResponse({ success: false }, 500);
   }
 };
 
@@ -246,11 +254,11 @@ export default async function handler(event) {
   try { payload = JSON.parse(event.body || '{}'); } catch {}
 
   switch(payload.action) {
-    case 'send':       return sendEmail(event);
-    case 'block':      return blockUser(event);
-    case 'unblock':    return unblockUser(event);
-    case 'listBlocked':return listBlockedUsers(event);
+    case 'send':        return sendEmail(event);
+    case 'block':       return blockUser(event);
+    case 'unblock':     return unblockUser(event);
+    case 'listBlocked': return listBlockedUsers(event);
     default:
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Unknown action' }) };
+      return jsonResponse({ success: false, error: 'Unknown action' }, 400);
   }
 }
