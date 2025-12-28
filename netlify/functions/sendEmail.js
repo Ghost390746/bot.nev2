@@ -12,8 +12,8 @@ const supabase = createClient(
 /* =========================
    CONFIG
 ========================= */
-const MAX_EMAILS_PER_HOUR = 5;
-const MAX_EMAILS_PER_DAY = 20;
+const MAX_EMAILS_PER_5_HOURS = 15;  // Max emails in a rolling 5-hour window
+const MAX_EMAILS_PER_DAY = 30;      // Max emails per 24 hours
 const MAX_LINKS = 3;
 
 /* =========================
@@ -21,10 +21,7 @@ const MAX_LINKS = 3;
 ========================= */
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
   secure: true
 });
 
@@ -103,11 +100,8 @@ export const handler = async (event) => {
 
     /* ---------- Body ---------- */
     let payload;
-    try {
-      payload = JSON.parse(event.body || '{}');
-    } catch {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) };
-    }
+    try { payload = JSON.parse(event.body || '{}'); } 
+    catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
 
     let { to_user, subject, body } = payload;
 
@@ -133,30 +127,18 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
     }
 
-    /* ---------- Block check ---------- */
-    const { data: block } = await supabase
-      .from('blocked_users')
-      .select('id')
-      .eq('blocker', to_user)
-      .eq('blocked', from_user)
-      .maybeSingle();
-
-    if (block) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
-    }
-
     /* ---------- Rate limiting ---------- */
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const { count: hourCount } = await supabase
+    const { count: fiveHourCount } = await supabase
       .from('emails')
       .select('*', { count: 'exact', head: true })
       .eq('from_user', from_user)
-      .gte('created_at', oneHourAgo);
+      .gte('created_at', fiveHoursAgo);
 
-    if (hourCount >= MAX_EMAILS_PER_HOUR) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Hourly limit reached' }) };
+    if (fiveHourCount >= MAX_EMAILS_PER_5_HOURS) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: '5-hour limit reached. Try later.' }) };
     }
 
     const { count: dayCount } = await supabase
@@ -166,7 +148,7 @@ export const handler = async (event) => {
       .gte('created_at', oneDayAgo);
 
     if (dayCount >= MAX_EMAILS_PER_DAY) {
-      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached' }) };
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached. Try tomorrow.' }) };
     }
 
     /* ---------- Spam scoring ---------- */
@@ -196,10 +178,7 @@ export const handler = async (event) => {
       text: `${senderData.username} says:\n\n${body}`
     });
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true })
-    };
+    return { statusCode: 200, body: JSON.stringify({ success: true }) };
 
   } catch (err) {
     console.error('sendEmail error:', err);
