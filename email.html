@@ -149,12 +149,22 @@ async function checkWarnings() {
   }
 }
 
+let isSending = false;
+
 // Send email
 sendBtn.addEventListener('click', async () => {
+  if (isSending) return;
+
   const to_user = toUserSelect.value;
   const subject = subjectInput.value.trim();
   const body = bodyInput.value.trim();
-  if (!to_user || !body) { output.textContent = 'Recipient and body required.'; return; }
+
+  if (!to_user || !body) {
+    output.textContent = 'Recipient and body required.';
+    return;
+  }
+
+  isSending = true;
 
   try {
     const res = await fetch('/.netlify/functions/sendEmail', {
@@ -163,7 +173,9 @@ sendBtn.addEventListener('click', async () => {
       credentials: 'include',
       body: JSON.stringify({ to_user, subject, body })
     });
+
     const data = await res.json();
+
     if (data.success) {
       output.textContent = '✅ Email sent successfully.';
       subjectInput.value = '';
@@ -172,20 +184,24 @@ sendBtn.addEventListener('click', async () => {
     } else {
       output.textContent = '⚠️ Error: ' + (data.error || 'Unknown error');
     }
+
   } catch (err) {
     console.error('Send email failed:', err);
     output.textContent = '❌ Failed to send email.';
+  } finally {
+    isSending = false;
   }
 });
 
-// Trigger real-time warning check
-subjectInput.addEventListener('input', checkWarnings);
-bodyInput.addEventListener('input', checkWarnings);
-toUserSelect.addEventListener('change', checkWarnings);
+// ❌ REMOVE THESE — they caused ghost sends
+// subjectInput.addEventListener('input', checkWarnings);
+// bodyInput.addEventListener('input', checkWarnings);
+// toUserSelect.addEventListener('change', checkWarnings);
 
 // Initialize
 loadUsers();
 loadInbox();
+
 </script>
 
 </body>
