@@ -39,27 +39,23 @@ export const handler = async (event) => {
       };
     }
 
-    // ✅ Get all verified users excluding self with avatar & last_online
+    // ✅ Get all verified users excluding self with avatar & online (boolean)
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('email, username, avatar_url, last_online')
+      .select('email, username, avatar_url, online')
       .eq('verified', true)
       .neq('email', sessionData.user_email)
       .order('email', { ascending: true });
 
     if (usersError) throw usersError;
 
-    // Map online status dynamically (last 5 minutes)
-    const mappedUsers = users.map(u => {
-      const lastActive = new Date(u.last_online || 0);
-      const online = (Date.now() - lastActive.getTime()) < 5 * 60 * 1000;
-      return {
-        email: u.email,
-        username: u.username || u.email,
-        avatar_url: u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.username || u.email)}.svg`,
-        online
-      };
-    });
+    // No need to calculate online, it's already a boolean
+    const mappedUsers = users.map(u => ({
+      email: u.email,
+      username: u.username || u.email,
+      avatar_url: u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.username || u.email)}.svg`,
+      online: u.online
+    }));
 
     return {
       statusCode: 200,
