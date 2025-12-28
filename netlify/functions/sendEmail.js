@@ -9,159 +9,200 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Use OAuth2 for email sending if possible instead of plain password
+/* =========================
+   CONFIG
+========================= */
+const MAX_EMAILS_PER_HOUR = 5;
+const MAX_EMAILS_PER_DAY = 20;
+const MAX_LINKS = 3;
+
+/* =========================
+   EMAIL TRANSPORT
+========================= */
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  secure: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  },
+  secure: true
 });
 
-// Sanitize input to prevent XSS
-const sanitize = (str) => {
-  if (!str) return '';
-  return str
+/* =========================
+   HELPERS
+========================= */
+const sanitize = (str = '') =>
+  str
     .replace(/[&<>"'/]/g, (c) => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
       '"': '&quot;',
       "'": '&#x27;',
-      '/': '&#x2F;',
+      '/': '&#x2F;'
     }[c]))
     .replace(/(\r|\n)/g, '');
-};
 
-// Email format validation
 const isValidEmail = (email) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-// Generate a cryptographically secure token (optional if you need one)
-const generateToken = () => crypto.randomBytes(32).toString('hex');
+const getClientIP = (event) =>
+  event.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+  event.headers['client-ip'] ||
+  'unknown';
 
+const spamScore = (text) => {
+  let score = 0;
+  const links = (text.match(/https?:\/\//gi) || []).length;
+  if (links > MAX_LINKS) score += 3;
+  if (text.length < 5) score += 2;
+  if (/(free money|click here|buy now|crypto|airdrop)/i.test(text)) score += 4;
+  if (/(.)\1{10,}/.test(text)) score += 2;
+  return score;
+};
+
+/* =========================
+   HANDLER
+========================= */
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
       return { statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
     }
 
-    // Parse cookies securely
+    /* ---------- Auth ---------- */
     const cookies = cookie.parse(event.headers.cookie || '');
     const session_token = cookies['__Host-session_secure'];
     if (!session_token) {
       return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
     }
 
-    // Verify session from DB
-    const { data: sessionData, error: sessionError } = await supabase
+    const { data: sessionData } = await supabase
       .from('sessions')
       .select('user_email, expires_at')
       .eq('session_token', session_token)
       .single();
 
-    if (sessionError || !sessionData) {
+    if (!sessionData || new Date(sessionData.expires_at) < new Date()) {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Invalid session' }) };
-    }
-    if (new Date(sessionData.expires_at) < new Date()) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Session expired' }) };
     }
 
     const from_user = sessionData.user_email;
+    const ip = getClientIP(event);
 
-    // Fetch sender info
-    const { data: senderData, error: senderError } = await supabase
+    /* ---------- Sender ---------- */
+    const { data: senderData } = await supabase
       .from('users')
       .select('email, username, avatar_url, last_online, verified')
       .eq('email', from_user)
       .single();
 
-    if (senderError || !senderData || !senderData.verified) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified or invalid' }) };
+    if (!senderData || !senderData.verified) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified' }) };
     }
 
-    // Parse request body safely
+    /* ---------- Body ---------- */
     let payload;
-    try { payload = JSON.parse(event.body || '{}'); } 
-    catch { 
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; 
+    try {
+      payload = JSON.parse(event.body || '{}');
+    } catch {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) };
     }
 
     let { to_user, subject, body } = payload;
 
     if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input or length exceeded' }) };
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input' }) };
+    }
+
+    if (!isValidEmail(to_user)) {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
     }
 
     subject = sanitize(subject || 'New message');
     body = sanitize(body);
 
-    if (!isValidEmail(to_user)) {
-      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Recipient email is invalid' }) };
-    }
-
-    // Fetch recipient info
-    const { data: recipientData, error: recipientError } = await supabase
+    /* ---------- Recipient ---------- */
+    const { data: recipientData } = await supabase
       .from('users')
-      .select('email, username, avatar_url, last_online, verified')
+      .select('email, username, verified')
       .eq('email', to_user)
       .single();
 
-    if (recipientError || !recipientData || !recipientData.verified) {
-      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient not verified or does not exist' }) };
+    if (!recipientData || !recipientData.verified) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
     }
 
-    // Insert email into DB
+    /* ---------- Block check ---------- */
+    const { data: block } = await supabase
+      .from('blocked_users')
+      .select('id')
+      .eq('blocker', to_user)
+      .eq('blocked', from_user)
+      .maybeSingle();
+
+    if (block) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
+    }
+
+    /* ---------- Rate limiting ---------- */
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const { count: hourCount } = await supabase
+      .from('emails')
+      .select('*', { count: 'exact', head: true })
+      .eq('from_user', from_user)
+      .gte('created_at', oneHourAgo);
+
+    if (hourCount >= MAX_EMAILS_PER_HOUR) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Hourly limit reached' }) };
+    }
+
+    const { count: dayCount } = await supabase
+      .from('emails')
+      .select('*', { count: 'exact', head: true })
+      .eq('from_user', from_user)
+      .gte('created_at', oneDayAgo);
+
+    if (dayCount >= MAX_EMAILS_PER_DAY) {
+      return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached' }) };
+    }
+
+    /* ---------- Spam scoring ---------- */
+    const score = spamScore(`${subject} ${body}`);
+    if (score >= 5) {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Message flagged as spam' }) };
+    }
+
+    /* ---------- Store ---------- */
     await supabase.from('emails').insert({
       id: uuidv4(),
       from_user,
       to_user,
       subject,
       body,
-      created_at: new Date().toISOString(),
+      ip_address: ip,
+      spam_score: score,
+      created_at: new Date().toISOString()
     });
 
-    // Determine sender online status
-    const senderOnline = (Date.now() - new Date(senderData.last_online || 0).getTime()) < 5 * 60 * 1000;
-    const senderStatusText = senderOnline ? 'Online' : 'Offline';
-    const senderAvatar = senderData.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(senderData.username)}.svg`;
-
-    // Send email with HTML safely
+    /* ---------- Send (NO SPOOFING) ---------- */
     await transporter.sendMail({
-      from: `"${senderData.username}" <${senderData.email}>`,
+      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
       to: recipientData.email,
       replyTo: senderData.email,
       subject,
-      text: `${senderData.username} (${senderStatusText}) says:\n\n${body}`,
-      html: `
-        <div style="font-family: sans-serif; color: #111;">
-          <div style="display:flex; align-items:center; margin-bottom:10px;">
-            <img src="${senderAvatar}" width="50" height="50" style="border-radius:50%; margin-right:10px;" />
-            <div>
-              <strong>${senderData.username}</strong> (${senderData.email})<br/>
-              Status: <strong>${senderStatusText}</strong>
-            </div>
-          </div>
-          <div style="margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:5px;">
-            ${body.replace(/\n/g, '<br/>')}
-          </div>
-        </div>
-      `,
+      text: `${senderData.username} says:\n\n${body}`
     });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        message: `Email sent successfully from ${senderData.username} to ${recipientData.username || recipientData.email}`,
-        sender: {
-          username: senderData.username,
-          avatar_url: senderAvatar,
-          online: senderOnline
-        }
-      }),
+      body: JSON.stringify({ success: true })
     };
 
   } catch (err) {
     console.error('sendEmail error:', err);
-    return { statusCode: 500, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
+    return { statusCode: 500, body: JSON.stringify({ success: false }) };
   }
 };
