@@ -127,15 +127,29 @@ export const handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
     }
 
+    /* ---------- Block check ---------- */
+    const { data: block } = await supabase
+      .from('blocked_users')
+      .select('id')
+      .eq('blocker', to_user)
+      .eq('blocked', from_user)
+      .maybeSingle();
+
+    if (block) {
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
+    }
+
     /* ---------- Rate limiting ---------- */
-    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date();
+    const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
     const { count: fiveHourCount } = await supabase
       .from('emails')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
-      .gte('created_at', fiveHoursAgo);
+      .gte('created_at', fiveHoursAgo)
+      .not('spam_score', 'gte', 5); // ignore spam
 
     if (fiveHourCount >= MAX_EMAILS_PER_5_HOURS) {
       return { statusCode: 429, body: JSON.stringify({ success: false, error: '5-hour limit reached. Try later.' }) };
@@ -143,9 +157,10 @@ export const handler = async (event) => {
 
     const { count: dayCount } = await supabase
       .from('emails')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
-      .gte('created_at', oneDayAgo);
+      .gte('created_at', oneDayAgo)
+      .not('spam_score', 'gte', 5);
 
     if (dayCount >= MAX_EMAILS_PER_DAY) {
       return { statusCode: 429, body: JSON.stringify({ success: false, error: 'Daily limit reached. Try tomorrow.' }) };
