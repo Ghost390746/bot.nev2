@@ -55,9 +55,6 @@ const spamScore = (text) => {
   return score;
 };
 
-/* =========================
-   AUTH HELPER
-========================= */
 const getSessionUser = async (event) => {
   const cookies = cookie.parse(event.headers.cookie || '');
   const session_token = cookies['__Host-session_secure'];
@@ -76,10 +73,11 @@ const getSessionUser = async (event) => {
 /* =========================
    EMAIL HANDLER
 ========================= */
-export const sendEmail = async (event) => {
+const sendEmail = async (event) => {
   try {
     const from_user = await getSessionUser(event);
-    if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
+    if (!from_user)
+      return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
 
     const { data: senderData } = await supabase
       .from('users')
@@ -87,20 +85,19 @@ export const sendEmail = async (event) => {
       .eq('email', from_user)
       .single();
 
-    if (!senderData || !senderData.verified) {
+    if (!senderData || !senderData.verified)
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Sender not verified' }) };
-    }
 
     let payload;
     try { payload = JSON.parse(event.body || '{}'); }
     catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
 
     let { to_user, subject, body } = payload;
-    if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200)) {
+    if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200))
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid input' }) };
-    }
 
-    if (!isValidEmail(to_user)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
+    if (!isValidEmail(to_user))
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid recipient email' }) };
 
     subject = sanitize(subject || 'New message');
     body = sanitize(body);
@@ -111,18 +108,18 @@ export const sendEmail = async (event) => {
       .eq('email', to_user)
       .single();
 
-    if (!recipientData || !recipientData.verified) {
+    if (!recipientData || !recipientData.verified)
       return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient invalid' }) };
-    }
 
-    // Block check
     const { data: block } = await supabase
       .from('blocked_users')
       .select('id')
       .eq('blocker', to_user)
       .eq('blocked', from_user)
       .maybeSingle();
-    if (block) return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
+
+    if (block)
+      return { statusCode: 403, body: JSON.stringify({ success: false, error: 'Recipient has blocked you' }) };
 
     const now = new Date();
     const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
@@ -137,9 +134,9 @@ export const sendEmail = async (event) => {
       .select('id', { count: 'exact', head: true })
       .eq('from_user', from_user)
       .gte('created_at', thirtyMinutesAgo);
-    if (sentCount >= MAX_EMAILS_PER_30_MINUTES) {
+
+    if (sentCount >= MAX_EMAILS_PER_30_MINUTES)
       return { statusCode: 429, body: JSON.stringify({ success: false, error: '30-minute limit reached. Try later.' }) };
-    }
 
     // Repeated message
     const { count: repeated } = await supabase
@@ -148,9 +145,9 @@ export const sendEmail = async (event) => {
       .eq('from_user', from_user)
       .eq('body', body)
       .gte('created_at', thirtyMinutesAgo);
-    if (repeated > 0) {
+
+    if (repeated > 0)
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Repeated message detected' }) };
-    }
 
     // Send email
     await transporter.sendMail({
@@ -184,7 +181,7 @@ export const sendEmail = async (event) => {
 /* =========================
    BLOCK HANDLERS
 ========================= */
-export const blockUser = async (event) => {
+const blockUser = async (event) => {
   try {
     const from_user = await getSessionUser(event);
     if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
@@ -194,9 +191,8 @@ export const blockUser = async (event) => {
     catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
 
     const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email)) return { statusCode:400, body: JSON.stringify({ success: false, error:'Invalid email' }) };
+    if (!target_email || !isValidEmail(target_email)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid email' }) };
 
-    // Insert block
     await supabase.from('blocked_users').upsert({ blocker: from_user, blocked: target_email });
     return { statusCode: 200, body: JSON.stringify({ success: true, message: `Blocked ${target_email}` }) };
   } catch (err) {
@@ -205,7 +201,7 @@ export const blockUser = async (event) => {
   }
 };
 
-export const unblockUser = async (event) => {
+const unblockUser = async (event) => {
   try {
     const from_user = await getSessionUser(event);
     if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
@@ -215,9 +211,8 @@ export const unblockUser = async (event) => {
     catch { return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid JSON' }) }; }
 
     const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email)) return { statusCode:400, body: JSON.stringify({ success: false, error:'Invalid email' }) };
+    if (!target_email || !isValidEmail(target_email)) return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid email' }) };
 
-    // Delete block
     await supabase.from('blocked_users').delete().eq('blocker', from_user).eq('blocked', target_email);
     return { statusCode: 200, body: JSON.stringify({ success: true, message: `Unblocked ${target_email}` }) };
   } catch (err) {
@@ -226,7 +221,7 @@ export const unblockUser = async (event) => {
   }
 };
 
-export const listBlockedUsers = async (event) => {
+const listBlockedUsers = async (event) => {
   try {
     const from_user = await getSessionUser(event);
     if (!from_user) return { statusCode: 401, body: JSON.stringify({ success: false, error: 'Not authenticated' }) };
@@ -242,3 +237,20 @@ export const listBlockedUsers = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ success: false }) };
   }
 };
+
+/* =========================
+   NETLIFY DEFAULT EXPORT
+========================= */
+export default async function handler(event) {
+  let payload = {};
+  try { payload = JSON.parse(event.body || '{}'); } catch {}
+
+  switch(payload.action) {
+    case 'send':       return sendEmail(event);
+    case 'block':      return blockUser(event);
+    case 'unblock':    return unblockUser(event);
+    case 'listBlocked':return listBlockedUsers(event);
+    default:
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Unknown action' }) };
+  }
+}
