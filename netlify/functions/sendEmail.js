@@ -2,263 +2,215 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import cookie from 'cookie';
+import crypto from 'crypto';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-/* =========================
-   CONFIG
-========================= */
-const MAX_EMAILS_PER_30_MINUTES = 30;
-const EMAIL_RETENTION_MS = 60 * 60 * 1000; // 1 hour
-const MAX_LINKS = 3;
-const NEW_SYSTEM_START = new Date('2025-12-27T00:00:00Z').toISOString();
-
-/* =========================
-   EMAIL TRANSPORT
-========================= */
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  secure: true
+/* ======================
+   ENV SAFETY CHECK
+====================== */
+['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','EMAIL_USER','EMAIL_PASS'].forEach(k=>{
+  if(!process.env[k]) throw new Error(`Missing env: ${k}`);
 });
 
-/* =========================
+/* ======================
+   SECURITY CONSTANTS
+====================== */
+const USER_LIMIT = 50;                 
+const USER_WINDOW = 30 * 60 * 1000;    
+const CLEANUP_INTERVAL = 3 * 60 * 60 * 1000;
+const MESSAGE_RETENTION = 3 * 60 * 60 * 1000;
+
+const ipBucket = new Map();
+const userBucket = new Map();
+let lastCleanup = 0;
+
+/* ======================
+   SUPABASE
+====================== */
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false } }
+);
+
+/* ======================
+   MAIL
+====================== */
+const transporter = nodemailer.createTransport({
+  service:'gmail',
+  auth:{ user:process.env.EMAIL_USER, pass:process.env.EMAIL_PASS },
+  secure:true
+});
+
+/* ======================
    HELPERS
-========================= */
-const sanitize = (str = '') =>
-  str.replace(/[&<>"'/]/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#x27;',
-    '/': '&#x2F;'
-  }[c]));
+====================== */
+const sanitize = str => (str||'').replace(/[&<>"']/g,m=>({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'
+}[m]));
 
-const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const escapeHTML = str => sanitize(str).replace(/\n/g,'<br>');
+const isValidEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-const getClientIP = (event) =>
-  event.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-  event.headers['client-ip'] ||
+const getIP = e =>
+  e.headers['x-forwarded-for']?.split(',')[0] ||
+  e.headers['client-ip'] ||
   'unknown';
 
-const spamScore = (text) => {
-  let score = 0;
-  const links = (text.match(/https?:\/\//gi) || []).length;
-  if (links > MAX_LINKS) score += 3;
-  if (text.length < 5) score += 2;
-  if (/(free money|click here|buy now|crypto|airdrop|giveaway)/i.test(text)) score += 4;
-  if (/(.)\1{10,}/.test(text)) score += 2;
-  return score;
-};
+const now = () => Date.now();
 
-const getSessionUser = async (event) => {
-  const cookies = cookie.parse(event.headers.cookie || '');
-  const session_token = cookies['__Host-session_secure'];
-  if (!session_token) return null;
+function bucketCheck(bucket, key, limit, window){
+  const t = now();
+  const rec = bucket.get(key) || { count:0, time:t };
+  if(t - rec.time > window){ rec.count = 0; rec.time = t; }
+  rec.count++;
+  bucket.set(key, rec);
+  return rec.count <= limit;
+}
 
-  const { data: sessionData } = await supabase
-    .from('sessions')
-    .select('user_email, expires_at')
-    .eq('session_token', session_token)
-    .single();
+async function cleanupEmails(){
+  if(now() - lastCleanup < CLEANUP_INTERVAL) return;
+  lastCleanup = now();
+  const cutoff = new Date(now() - MESSAGE_RETENTION).toISOString();
+  await supabase.from('emails').delete().lt('created_at', cutoff);
+}
 
-  if (!sessionData || new Date(sessionData.expires_at) < new Date()) return null;
-  return sessionData.user_email;
-};
+function secureCompare(a,b){
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  if(x.length !== y.length) return false;
+  return crypto.timingSafeEqual(x,y);
+}
 
-/* =========================
-   UTILITY FOR RESPONSE
-========================= */
-const jsonResponse = (obj, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
-
-/* =========================
-   EMAIL HANDLER
-========================= */
-const sendEmail = async (event) => {
+/* ======================
+   HANDLER
+====================== */
+export const handler = async (event) => {
   try {
-    const from_user = await getSessionUser(event);
-    if (!from_user)
-      return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
+    await cleanupEmails();
 
-    const { data: senderData } = await supabase
-      .from('users')
-      .select('email, username, verified')
-      .eq('email', from_user)
+    if(event.httpMethod !== 'POST')
+      return res(405,'Method Not Allowed');
+
+    const ip = getIP(event);
+
+    if(!bucketCheck(ipBucket, ip, 200, USER_WINDOW))
+      return res(429,'Rate limit exceeded');
+
+    const cookies = cookie.parse(event.headers.cookie||'');
+    const token = cookies['__Host-session_secure'];
+    if(!token) return res(401,'Not authenticated');
+
+    const { data:session } = await supabase
+      .from('sessions')
+      .select('user_email,expires_at,session_token')
+      .eq('session_token',token)
       .single();
 
-    if (!senderData || !senderData.verified)
-      return jsonResponse({ success: false, error: 'Sender not verified' }, 403);
+    if(!session || new Date(session.expires_at) < new Date())
+      return res(403,'Session invalid');
+
+    if(!secureCompare(token, session.session_token))
+      return res(403,'Session integrity violation');
+
+    const from_user = session.user_email;
+
+    if(!bucketCheck(userBucket, from_user, USER_LIMIT, USER_WINDOW))
+      return res(429,'User sending limit exceeded');
+
+    const { data:sender } = await supabase
+      .from('users')
+      .select('email,username,avatar_url,last_online,verified')
+      .eq('email',from_user)
+      .single();
+
+    if(!sender?.verified)
+      return res(403,'Sender not verified');
 
     let payload;
-    try { payload = JSON.parse(event.body || '{}'); }
-    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
+    try { payload = JSON.parse(event.body||'{}'); }
+    catch { return res(400,'Invalid JSON'); }
 
     let { to_user, subject, body } = payload;
-    if (!to_user || !body || body.length > 2000 || (subject && subject.length > 200))
-      return jsonResponse({ success: false, error: 'Invalid input' }, 400);
 
-    if (!isValidEmail(to_user))
-      return jsonResponse({ success: false, error: 'Invalid recipient email' }, 400);
+    if(!to_user || !body || body.length>2000 || subject?.length>200)
+      return res(400,'Invalid input');
 
-    subject = sanitize(subject || 'New message');
+    if(!isValidEmail(to_user))
+      return res(400,'Invalid recipient');
+
+    subject = sanitize(subject||'New message');
     body = sanitize(body);
 
-    const { data: recipientData } = await supabase
+    const { data:recipient } = await supabase
       .from('users')
-      .select('email, username, verified')
-      .eq('email', to_user)
+      .select('email,username,verified')
+      .eq('email',to_user)
       .single();
 
-    if (!recipientData || !recipientData.verified)
-      return jsonResponse({ success: false, error: 'Recipient invalid' }, 403);
+    if(!recipient?.verified)
+      return res(403,'Recipient invalid');
 
-    const { data: block } = await supabase
-      .from('blocked_users')
+    const msgHash = crypto.createHash('sha256')
+      .update(from_user+to_user+body)
+      .digest('hex');
+
+    const { data:dup } = await supabase
+      .from('emails')
       .select('id')
-      .eq('blocker', to_user)
-      .eq('blocked', from_user)
+      .eq('hash', msgHash)
+      .gte('created_at', new Date(now()-USER_WINDOW).toISOString())
       .maybeSingle();
 
-    if (block)
-      return jsonResponse({ success: false, error: 'Recipient has blocked you' }, 403);
+    if(dup) return res(409,'Duplicate message detected');
 
-    const now = new Date();
-    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
-    const retentionThreshold = new Date(now.getTime() - EMAIL_RETENTION_MS).toISOString();
-
-    // Delete old emails
-    await supabase.from('emails').delete().lt('created_at', retentionThreshold);
-
-    // 30-min email limit
-    const { count: sentCount } = await supabase
-      .from('emails')
-      .select('id', { count: 'exact', head: true })
-      .eq('from_user', from_user)
-      .gte('created_at', thirtyMinutesAgo);
-
-    if (sentCount >= MAX_EMAILS_PER_30_MINUTES)
-      return jsonResponse({ success: false, error: '30-minute limit reached. Try later.' }, 429);
-
-    // Repeated message
-    const { count: repeated } = await supabase
-      .from('emails')
-      .select('id', { count: 'exact', head: true })
-      .eq('from_user', from_user)
-      .eq('body', body)
-      .gte('created_at', thirtyMinutesAgo);
-
-    if (repeated > 0)
-      return jsonResponse({ success: false, error: 'Repeated message detected' }, 400);
-
-    // Send email
-    await transporter.sendMail({
-      from: `"Botnev Mail" <${process.env.EMAIL_USER}>`,
-      to: recipientData.email,
-      replyTo: senderData.email,
-      subject,
-      text: `${senderData.username} says:\n\n${body}`,
-      html: `<p><strong>${senderData.username} says:</strong></p><p>${body}</p>`
-    });
-
-    // Store email
     await supabase.from('emails').insert({
       id: uuidv4(),
       from_user,
       to_user,
       subject,
       body,
-      ip_address: getClientIP(event),
-      spam_score: spamScore(`${subject} ${body}`),
-      created_at: now.toISOString()
+      hash: msgHash,
+      ip_address: ip,
+      created_at: new Date().toISOString()
     });
 
-    return jsonResponse({ success: true });
+    const online = now() - new Date(sender.last_online||0) < 5*60*1000;
+    const avatar = sender.avatar_url ||
+      `https://avatars.dicebear.com/api/initials/${encodeURIComponent(sender.username)}.svg`;
+
+    await transporter.sendMail({
+      from: `"${sender.username}" <${sender.email}>`,
+      to: recipient.email,
+      replyTo: sender.email,
+      subject,
+      text: `${sender.username} says:\n\n${body}`,
+      html: `
+        <div style="font-family:sans-serif">
+          <img src="${avatar}" width="48" style="border-radius:50%">
+          <b>${sender.username}</b> (${online?'Online':'Offline'})
+          <hr>
+          ${escapeHTML(body)}
+        </div>
+      `
+    });
+
+    return res(200,{ success:true });
+
   } catch (err) {
-    console.error('sendEmail error:', err);
-    return jsonResponse({ success: false }, 500);
+    console.error('BANK-GRADE ERROR:',err);
+    return res(500,'Server error');
   }
 };
 
-/* =========================
-   BLOCK HANDLERS
-========================= */
-const blockUser = async (event) => {
-  try {
-    const from_user = await getSessionUser(event);
-    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
-
-    let payload;
-    try { payload = JSON.parse(event.body || '{}'); }
-    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
-
-    const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email))
-      return jsonResponse({ success: false, error: 'Invalid email' }, 400);
-
-    await supabase.from('blocked_users').upsert({ blocker: from_user, blocked: target_email });
-    return jsonResponse({ success: true, message: `Blocked ${target_email}` });
-  } catch (err) {
-    console.error('blockUser error:', err);
-    return jsonResponse({ success: false }, 500);
-  }
-};
-
-const unblockUser = async (event) => {
-  try {
-    const from_user = await getSessionUser(event);
-    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
-
-    let payload;
-    try { payload = JSON.parse(event.body || '{}'); }
-    catch { return jsonResponse({ success: false, error: 'Invalid JSON' }, 400); }
-
-    const { target_email } = payload;
-    if (!target_email || !isValidEmail(target_email))
-      return jsonResponse({ success: false, error: 'Invalid email' }, 400);
-
-    await supabase.from('blocked_users').delete().eq('blocker', from_user).eq('blocked', target_email);
-    return jsonResponse({ success: true, message: `Unblocked ${target_email}` });
-  } catch (err) {
-    console.error('unblockUser error:', err);
-    return jsonResponse({ success: false }, 500);
-  }
-};
-
-const listBlockedUsers = async (event) => {
-  try {
-    const from_user = await getSessionUser(event);
-    if (!from_user) return jsonResponse({ success: false, error: 'Not authenticated' }, 401);
-
-    const { data } = await supabase
-      .from('blocked_users')
-      .select('blocked')
-      .eq('blocker', from_user);
-
-    return jsonResponse({ success: true, blocked: data.map(d => d.blocked) });
-  } catch (err) {
-    console.error('listBlockedUsers error:', err);
-    return jsonResponse({ success: false }, 500);
-  }
-};
-
-/* =========================
-   NETLIFY DEFAULT EXPORT
-========================= */
-export default async function handler(event) {
-  let payload = {};
-  try { payload = JSON.parse(event.body || '{}'); } catch {}
-
-  switch(payload.action) {
-    case 'send':        return sendEmail(event);
-    case 'block':       return blockUser(event);
-    case 'unblock':     return unblockUser(event);
-    case 'listBlocked': return listBlockedUsers(event);
-    default:
-      return jsonResponse({ success: false, error: 'Unknown action' }, 400);
-  }
+function res(code,data){
+  return {
+    statusCode: code,
+    headers:{
+      'Content-Type':'application/json',
+      'X-Content-Type-Options':'nosniff',
+      'X-Frame-Options':'DENY',
+      'Referrer-Policy':'no-referrer'
+    },
+    body: JSON.stringify(typeof data==='string'?{error:data}:data)
+  };
 }
