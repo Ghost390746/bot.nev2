@@ -116,14 +116,31 @@ async function loadInbox() {
       method: 'GET',
       credentials: 'include'
     });
+
+    if (!res.ok) {
+      inboxDiv.textContent = `Server error (${res.status})`;
+      return;
+    }
+
     const data = await res.json();
 
-    if (!data.success || !data.emails.length) {
+    if (!data.success) {
+      inboxDiv.textContent = data.error || 'Failed to load inbox';
+      return;
+    }
+
+    if (!Array.isArray(data.emails)) {
+      inboxDiv.textContent = 'Malformed inbox response';
+      return;
+    }
+
+    if (data.emails.length === 0) {
       inboxDiv.textContent = 'No emails';
       return;
     }
 
     inboxDiv.innerHTML = '';
+
     data.emails.forEach(e => {
       const div = document.createElement('div');
       div.className = 'email';
@@ -136,13 +153,15 @@ async function loadInbox() {
           <div>${sanitize(e.body)}</div>
         </div>
       `;
+
       inboxDiv.appendChild(div);
     });
-  } catch {
-    inboxDiv.textContent = 'Failed to load inbox';
+
+  } catch (err) {
+    console.error('Inbox load failed:', err);
+    inboxDiv.textContent = 'Inbox connection failed';
   }
 }
-
 // =====================
 // SEND EMAIL
 // =====================
