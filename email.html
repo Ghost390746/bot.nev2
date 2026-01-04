@@ -68,81 +68,88 @@ const sendBtn = document.getElementById('sendBtn');
 const output = document.getElementById('output');
 const inboxDiv = document.getElementById('inbox');
 
-const blockUserEmailInput = document.getElementById('blockUserEmail');
-const blockBtn = document.getElementById('blockBtn');
-const blockedList = document.getElementById('blockedList');
-
 function sanitize(str) {
   const temp = document.createElement('div');
   temp.textContent = str || '';
   return temp.innerHTML;
 }
 
-// Load users for sending emails
+// =====================
+// LOAD USERS
+// =====================
 async function loadUsers() {
   try {
-    const res = await fetch('/.netlify/functions/getVerifiedUsers', { method: 'POST', credentials: 'include' });
+    const res = await fetch('/.netlify/functions/getVerifiedUsers', {
+      method: 'POST',
+      credentials: 'include'
+    });
     const data = await res.json();
-    if (!data.success) throw new Error('Failed to load users');
+    if (!data.success) throw new Error();
 
     toUserSelect.innerHTML = '<option value="">Select recipient...</option>';
+
     data.users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.email;
-      const statusEmoji = u.online ? '🟢' : '⚪';
-      opt.textContent = `${statusEmoji} ${u.username || u.email}`;
-      opt.dataset.avatar = u.avatar_url || `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.email||'user')}.svg`;
+      opt.textContent = `${u.online ? '🟢' : '⚪'} ${u.username || u.email}`;
+      opt.dataset.avatar = u.avatar_url || 
+        `https://avatars.dicebear.com/api/initials/${encodeURIComponent(u.email)}.svg`;
       toUserSelect.appendChild(opt);
     });
-  } catch (err) {
-    console.error(err);
+  } catch {
     toUserSelect.innerHTML = '<option value="">Failed to load users</option>';
   }
 }
 
-// Show avatar next to select
+// Avatar preview
 toUserSelect.addEventListener('change', () => {
   const selected = toUserSelect.selectedOptions[0];
   avatarPreview.src = selected?.dataset.avatar || '';
 });
 
-// Load inbox
+// =====================
+// LOAD INBOX
+// =====================
 async function loadInbox() {
   try {
-    const res = await fetch('/.netlify/functions/Inbox', { method: 'GET', credentials: 'include' });
+    const res = await fetch('/.netlify/functions/Inbox', {
+      method: 'GET',
+      credentials: 'include'
+    });
     const data = await res.json();
-    if (!data.success) { inboxDiv.textContent = 'Failed to load inbox'; return; }
-    if (!data.emails.length) { inboxDiv.textContent = 'No emails'; return; }
+
+    if (!data.success || !data.emails.length) {
+      inboxDiv.textContent = 'No emails';
+      return;
+    }
 
     inboxDiv.innerHTML = '';
     data.emails.forEach(e => {
       const div = document.createElement('div');
       div.className = 'email';
-      const sender = e.from || { username: 'Unknown', email: '', avatar_url: '', online: false };
 
       div.innerHTML = `
-        <div class="email-content" style="display:flex; gap:10px; align-items:flex-start; padding:10px; border-bottom:1px solid #ddd;">
-          <img src="${sanitize(sender.avatar_url)}" alt="${sanitize(sender.username)}" width="50" height="50" style="border-radius:50%;">
-          <div>
-            <div><strong>From:</strong> ${sanitize(sender.username)} (${sanitize(sender.email)}) ${sender.online ? '🟢' : '⚪'}</div>
-            <div><strong>Subject:</strong> ${sanitize(e.subject) || '(none)'}</div>
-            <div><strong>Date:</strong> ${new Date(e.created_at).toLocaleString()}</div>
-            <div>${sanitize(e.body)}</div>
-          </div>
+        <div class="email-content">
+          <strong>From:</strong> ${sanitize(e.from.username)} (${sanitize(e.from.email)})<br>
+          <strong>Subject:</strong> ${sanitize(e.subject)}<br>
+          <strong>Date:</strong> ${new Date(e.created_at).toLocaleString()}<br>
+          <div>${sanitize(e.body)}</div>
         </div>
       `;
       inboxDiv.appendChild(div);
     });
-  } catch (err) {
-    console.error('Failed to load inbox:', err);
+  } catch {
     inboxDiv.textContent = 'Failed to load inbox';
   }
 }
 
-// Send email
-let isSending = false;
+// =====================
+// SEND EMAIL
+// =====================
+let sending = false;
+
 sendBtn.addEventListener('click', async () => {
-  if (isSending) return;
+  if (sending) return;
 
   const to_user = toUserSelect.value;
   const subject = subjectInput.value.trim();
@@ -153,19 +160,15 @@ sendBtn.addEventListener('click', async () => {
     return;
   }
 
-  isSending = true;
+  sending = true;
   try {
     const res = await fetch('/.netlify/functions/sendEmail', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type':'application/json'},
       credentials: 'include',
-      body: JSON.stringify({ 
-        action: 'send',   // ✅ Fixed: Added action
-        to_user, 
-        subject, 
-        body 
-      })
+      body: JSON.stringify({ to_user, subject, body })
     });
+
     const data = await res.json();
 
     if (data.success) {
@@ -174,83 +177,18 @@ sendBtn.addEventListener('click', async () => {
       bodyInput.value = '';
       loadInbox();
     } else {
-      output.textContent = '⚠️ Error: ' + (data.error || 'Unknown error');
+      output.textContent = '⚠️ ' + (data.error || 'Unknown error');
     }
-  } catch (err) {
-    console.error('Send email failed:', err);
-    output.textContent = '❌ Failed to send email.';
+  } catch {
+    output.textContent = '❌ Send failed';
   } finally {
-    isSending = false;
+    sending = false;
   }
 });
 
-// BLOCK/UNBLOCK FUNCTIONS
-async function loadBlockedUsers() {
-  try {
-    const res = await fetch('/.netlify/functions/sendEmail', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ action: 'listBlocked' })
-    });
-    const data = await res.json();
-    if (!data.success) { blockedList.innerHTML = '<li>Failed to load blocked users</li>'; return; }
-
-    blockedList.innerHTML = '';
-    if (!data.blocked.length) blockedList.innerHTML = '<li>No blocked users</li>';
-
-    data.blocked.forEach(email => {
-      const li = document.createElement('li');
-      li.textContent = email + ' ';
-      const unblockBtn = document.createElement('button');
-      unblockBtn.textContent = 'Unblock';
-      unblockBtn.onclick = async () => {
-        const res = await fetch('/.netlify/functions/sendEmail', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ action: 'unblock', target_email: email })
-        });
-        const result = await res.json();
-        if (result.success) loadBlockedUsers();
-      };
-      li.appendChild(unblockBtn);
-      blockedList.appendChild(li);
-    });
-  } catch (err) {
-    console.error(err);
-    blockedList.innerHTML = '<li>Error loading blocked users</li>';
-  }
-}
-
-// Block a new user
-blockBtn.addEventListener('click', async () => {
-  const email = blockUserEmailInput.value.trim();
-  if (!email) return;
-  try {
-    const res = await fetch('/.netlify/functions/sendEmail', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ action: 'block', target_email: email })
-    });
-    const data = await res.json();
-    if (data.success) {
-      blockUserEmailInput.value = '';
-      loadBlockedUsers();
-    } else {
-      alert('Failed to block user: ' + (data.error || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error(err);
-  }
-});
-
-// INITIALIZE
+// =====================
+// INIT
+// =====================
 loadUsers();
 loadInbox();
-loadBlockedUsers();
 </script>
-
-</body>
-</html>
